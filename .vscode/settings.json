@@ -1,0 +1,46 @@
+{
+  "files.associations": {
+    "*.tex": "latex",
+    "*.sty": "latex",
+    "*.cls": "latex",
+    "*.bib": "bibtex"
+  },
+  "latex-workshop.view.pdf.viewer": "tab",
+  "latex-workshop.synctex.afterBuild.enabled": true,
+  "latex-workshop.latex.autoBuild.run": "onSave",
+  "latex-workshop.latex.outDir": "%DIR%/.latex-build",
+  "latex-workshop.message.error.show": true,
+  "latex-workshop.latex.clean.fileTypes": [
+    "*.aux",
+    "*.bbl",
+    "*.bcf",
+    "*.blg",
+    "*.fdb_latexmk",
+    "*.fls",
+    "*.log",
+    "*.out",
+    "*.run.xml",
+    "*.synctex.gz",
+    "*.toc"
+  ],
+  "latex-workshop.latex.recipes": [
+    {
+      "name": "tectonic",
+      "tools": [
+        "tectonic"
+      ]
+    }
+  ],
+  "latex-workshop.latex.tools": [
+    {
+      "name": "tectonic",
+      "command": "/home/user/miniconda3/bin/tectonic",
+      "args": [
+        "--synctex",
+        "--keep-logs",
+        "--outdir=%OUTDIR%",
+        "%DOC_EXT%"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+*.pyc
+environment/runs/
+*.npz
+*.pt
+*.tfevents*
+*.egg-info/
+
+*/__pycache__/
+# Exclude trained checkpoints under runs (keep source: environment/aerial_gym/nn/*.py)
+**/runs/**/nn/
+
+train_dir/
+wandb/
+environment/runs/
+**/.latex-build/

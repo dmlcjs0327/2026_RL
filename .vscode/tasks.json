@@ -1,0 +1,22 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "LaTeX: Build current file",
+      "type": "shell",
+      "command": "/home/user/miniconda3/bin/tectonic",
+      "args": [
+        "--synctex",
+        "--keep-logs",
+        "--outdir",
+        "${fileDirname}/.latex-build",
+        "${file}"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    }
+  ]
+}

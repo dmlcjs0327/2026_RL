@@ -1,0 +1,78 @@
+experiment:
+  name: tdm_gc
+  seed: 8
+
+algo:
+  name: tdm
+
+env:
+  task_name: position_setpoint_gc_task
+  env_name: empty_env
+  robot_name: base_quadrotor
+  controller_name: lee_attitude_control
+  observation_dim: 13
+  goal_dim: 3
+  action_dim: 4
+  episode_len_steps: 500
+  success_threshold: 0.5
+  success_reward: 1.0
+  collision_penalty: -10.0
+
+network:
+  hidden_sizes: [128, 128, 64]
+  activation: relu
+
+train:
+  device: cuda:0
+  num_envs: 256
+  headless: true
+  use_warp: true
+  total_env_steps: 1000000
+  warmup_env_steps: 10000
+  batch_size: 256
+  replay_buffer_size: 100000
+  gradient_steps_per_iter: 1
+  save_every_env_steps: 100000
+  log_every_sec: 10
+  max_completed_episodes: 2048
+
+her:
+  enabled: false
+  strategy: future
+  k: 4
+
+td3:
+  actor_lr: 0.0003
+  critic_lr: 0.0003
+  gamma: 0.99
+  tau: 0.005
+  policy_delay: 2
+  policy_noise: 0.2
+  noise_clip: 0.5
+  exploration_noise: 0.1
+
+sac:
+  actor_lr: 0.0003
+  critic_lr: 0.001
+  alpha_lr: 0.0003
+  init_alpha: 0.1
+  gamma: 0.99
+  tau: 0.005
+  log_std_bounds: [-5, 2]
+
+tdm:
+  actor_lr: 0.0003
+  critic_lr: 0.0003
+  gamma: 1.0
+  tau: 0.005
+  policy_delay: 2
+  exploration_noise: 0.1
+  max_horizon: 25
+  policy_horizon: 25
+
+crl:
+  actor_lr: 0.0003
+  critic_lr: 0.0003
+  latent_dim: 64
+  temperature: 0.1
+  exploration_noise: 0.1
