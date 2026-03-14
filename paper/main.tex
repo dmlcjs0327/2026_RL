@@ -88,7 +88,8 @@
 
 % *** CITATION PACKAGES ***
 %
-%\usepackage{cite}
+\usepackage{cite}
+\usepackage{kotex}
 % cite.sty was written by Donald Arseneau
 % V1.6 and later of IEEEtran pre-defines the format of the cite.sty package
 % \cite{} output to follow that of the IEEE. Loading the cite package will
@@ -493,6 +494,28 @@ Subsection text here.
 \subsubsection{Subsubsection Heading Here}
 Subsubsection text here.
 
+\section{Related Work}
+\label{sec:related_work}
+Sparse-reward aerial goal-conditioned reinforcement learning을 다룬 기존 연구는 크게 세 흐름으로 정리할 수 있다. 첫째, 희소한 성공 신호를 더 효과적으로 활용하거나 더 빠르게 성공 궤적을 만들기 위한 goal-conditioned learning 연구가 있다. 둘째, goal-conditioned value 또는 critic이 더 유용한 구조를 학습하도록 표현을 설계하거나 보조 신호를 부여하는 연구가 있다. 셋째, aerial robotics에서는 목표의 위치만으로는 local branch quality가 충분히 설명되지 않기 때문에, 접근 자세와 시야, clearance, 동역학을 함께 고려하는 agile flight 연구가 축적되어 왔다. 본 절에서는 이 세 흐름을 차례로 정리한 뒤, 마지막에 본 연구의 위치를 요약한다.
+
+\subsection{Sparse-Reward Goal-Conditioned Learning}
+Goal-conditioned reinforcement learning의 기본 토대는 상태와 목표를 함께 조건화한 value function에서 출발한다. UVFA는 하나의 함수 근사기가 여러 목표에 대해 일반화할 수 있음을 보였고, 이후 goal-conditioned critic을 구성하는 표준적 출발점이 되었다~\cite{schaul2015uvfa}. Sparse reward 환경에서 이 틀을 실질적으로 작동하게 만든 대표적 방법은 HER이다~\cite{andrychowicz2017her}. HER은 실패 궤적을 달성된 목표에 대한 성공 경험으로 재해석함으로써 replay 효율을 높였고, sparse binary reward만으로도 goal-reaching 학습이 가능함을 보였다. 이후 CHER과 HGG는 각각 hindsight sample selection의 curriculum화와 intermediate hindsight goal generation을 통해 sample efficiency와 exploration을 더 개선하고자 하였다~\cite{fang2019cher,ren2019hgg}. 이 계열의 핵심은 더 많은 유효 학습 신호를 확보하거나, 현재 정책 수준에 맞는 목표를 더 잘 선택하는 데 있다.
+
+한편 sparse goal-reaching을 보다 다른 학습 관점에서 다루는 흐름도 존재한다. GCSL은 hindsight relabeling과 self-imitation을 결합하여 value function 없이도 목표 도달 정책을 안정적으로 학습할 수 있음을 보였다~\cite{ghosh2021gcsl}. C-learning은 연속 공간에서 희소한 goal indicator reward에 대한 단순 Q-learning의 해석이 취약하다는 점을 지적하고, goal-conditioned RL을 미래 상태 분포에 대한 recursive classification 문제로 재구성하였다~\cite{eysenbach2021clearning}. 이들 연구는 sparse-reward goal-reaching의 병목이 단순한 reward propagation만이 아니라 목표 조건 미래 구조의 학습과도 관련됨을 보여준다. 그러나 이 흐름 전반에서 주된 관심은 relabeling, goal sampling, exploration, 또는 alternative learning objective에 있으며, 동일한 상태 맥락 아래 candidate goals 간 상대적 ordering이 초기 critic 내부에서 얼마나 잘 형성되는지는 별도의 문제로 거의 다뤄지지 않았다.
+
+\subsection{Goal-Conditioned Value Learning and Critic-Aware Representation}
+Goal-conditioned learning에서 representation을 어떻게 형성할 것인가는 오랫동안 중요한 주제였다. CIG는 현재 맥락에서 도달 가능한 목표만 생성하도록 context-conditioned goal model을 학습하여, self-supervised goal-conditioned learning에서 feasibility 문제가 중요함을 보여주었다~\cite{nair2020cig}. LEXA는 world model과 imagined rollouts를 이용해 goal discovery와 goal achievement를 함께 학습함으로써, 미래로부터 유도된 신호를 목표 학습에 활용하는 방향을 제시하였다~\cite{mendonca2021lexa}. VGCRL은 goal-conditioned RL과 empowerment 기반 representation learning을 보다 통합된 관점에서 해석하였고~\cite{choi2021vgcrl}, contrastive RL은 미래 상태와 state-action representation의 내적을 goal-conditioned value와 직접 연결함으로써 representation learning과 goal-conditioned RL을 하나의 목적 함수 아래 다룰 수 있음을 보였다~\cite{eysenbach2022contrastive_gcrl}. 이 계열의 연구는 goal-conditioned representation이 단순한 특징 추출이 아니라, 미래 도달성이나 value 구조와 결합되어야 함을 분명히 한다.
+
+보다 직접적으로 critic 또는 value에 정합적인 표현을 형성하려는 연구도 이어졌다. RCRL은 return 기반 contrastive objective를 사용하여 representation이 return-relevant semantics를 반영하도록 하였고~\cite{liu2021rcrl}, Lyle 등은 auxiliary task가 sparse-reward 환경에서 representation dynamics를 어떻게 바꾸는지 이론적으로 분석하였다~\cite{lyle2021aux_rep_dynamics}. VCR은 transition prediction만으로는 decision-relevant representation이 충분하지 않을 수 있음을 지적하며, imagined state와 real state의 Q-value consistency를 맞추는 방향으로 value-aware representation을 학습하였다~\cite{yue2023vcr}. 이러한 연구들은 generic self-supervised objective보다 value-aware signal이 RL 학습에 더 직접적인 도움을 줄 수 있음을 시사한다. 그럼에도 기존 연구의 중심은 cross-context value consistency, return similarity, 또는 future-state matching에 있으며, 동일한 context에서 여러 목표 후보의 상대적 선호 구조를 pairwise relational form으로 초기화하는 문제는 전면화되지 않았다. 본 연구는 이 지점에서 trajectory continuation을 value truth가 아닌 limited local relational evidence로 제한적으로 해석하고, same-context pairwise ranking을 통해 critic-side encoder만 warm-start하는 접근을 취한다.
+
+\subsection{Aerial Robotics and Approach-Sensitive Flight}
+Aerial robotics에서는 목표의 위치만으로 local branch quality를 충분히 설명하기 어려운 경우가 빈번하다. 좁은 gap이나 corridor, docking과 같은 과업에서는 접근 각도, yaw, clearance, 시야 확보, 동역학 제약이 함께 맞아야 하며, 동일한 위치 목표라 하더라도 진입 기하가 다르면 short-horizon outcome이 크게 달라질 수 있다. Falanga 등은 narrow-gap flight에서 active vision, 접근 자세, clearance, 동역학 제약을 통합적으로 다루어 이러한 특성을 잘 보여주었다~\cite{falanga2017narrow_gaps}. Song 등은 perception-aware reward를 통해 yaw와 비행 방향 정렬이 minimum-time flight에서 핵심적임을 보였고~\cite{song2023cluttered_flight}, 이는 position-only goal이 충분하지 않은 aerial setting의 전형적인 예다.
+
+Agile flight와 drone racing 문헌은 이러한 문제의 난도와 robotics relevance를 더욱 분명히 보여준다. Swift는 실제 챔피언 수준의 autonomous drone racing을 RL 기반으로 달성하며, 고속 aerial control이 perception, state estimation, control, sim-to-real transfer가 강하게 결합된 어려운 로봇 문제임을 보여주었다~\cite{kaufmann2023swift}. Xing 등은 vision-based agile flight에서 RL from scratch의 sample inefficiency를 imitation bootstrapping으로 완화할 필요성을 보고하였다~\cite{xing2024bootstrap_rl_agile}. Romero 등은 actor--critic RL과 differentiable MPC를 결합해 agile flight에서 sample efficiency와 out-of-distribution robustness를 함께 개선하며, critic learning이 실제 제어 성능에 미치는 영향을 분석하였다~\cite{romero2025acmpc}. 이들 연구의 중심은 perception, policy architecture, controller design, 또는 system integration에 있지만, 동시에 aerial task에서는 잘못된 초기 branch 선택이 곧바로 crash risk와 연결될 수 있음을 보여준다. 이러한 점은 sparse-reward 초기 구간에서 critic의 same-context goal preference가 왜 일반적인 goal-reaching보다 aerial robotics에서 더 중요한 문제인지 뒷받침한다.
+
+\subsection{Synthesis and Positioning}
+정리하면, 기존 연구는 sparse-reward goal-conditioned learning에서 relabeling과 exploration, goal modeling, value-aware representation, 그리고 aerial control architecture의 중요성을 각각 분명히 보여주었다. 그러나 이들 연구의 주요 초점은 더 많은 유효 학습 신호를 확보하거나, 더 나은 goal proposal을 만들거나, critic이 value-consistent representation을 학습하도록 돕거나, 또는 agile flight를 위한 정책 및 제어 구조를 설계하는 데 있었다. 반면 본 연구는 actor--critic objective, reward design, HER backbone, exploration mechanism을 유지한 채, 초기 sparse-reward 구간에서 critic이 같은 상태 맥락 아래 candidate goals의 상대적 short-horizon preference를 얼마나 합리적으로 형성하는가를 별도의 문제로 다룬다. 특히 aerial task에서는 terminal position alone으로 local branch quality가 잘 닫히지 않기 때문에, same-context relational initialization의 utility가 더 크게 나타날 가능성이 있다. 이러한 점에서 본 연구는 sparse-reward GC-RL의 일반적 sample-efficiency 논의와 aerial robotics의 approach-sensitive control 문제를 critic-side warm-start라는 형태로 연결한다.
+
 
 % An example of a floating figure using the graphicx package.
 % Note that \label must occur AFTER (or within) \caption.
@@ -653,20 +676,20 @@ The authors would like to thank...
 % http://mirror.ctan.org/biblio/bibtex/contrib/doc/
 % The IEEEtran BibTeX style support page is at:
 % http://www.michaelshell.org/tex/ieeetran/bibtex/
-%\bibliographystyle{IEEEtran}
+\bibliographystyle{IEEEtran}
 % argument is your BibTeX string definitions and bibliography database(s)
-%\bibliography{IEEEabrv,../bib/paper}
+\bibliography{references}
 %
 % <OR> manually copy in the resultant .bbl file
 % set second argument of \begin to the number of references
 % (used to reserve space for the reference number labels box)
-\begin{thebibliography}{1}
-
-\bibitem{IEEEhowto:kopka}
-H.~Kopka and P.~W. Daly, \emph{A Guide to \LaTeX}, 3rd~ed.\hskip 1em plus
-  0.5em minus 0.4em\relax Harlow, England: Addison-Wesley, 1999.
-
-\end{thebibliography}
+% \begin{thebibliography}{1}
+%
+% \bibitem{IEEEhowto:kopka}
+% H.~Kopka and P.~W. Daly, \emph{A Guide to \LaTeX}, 3rd~ed.\hskip 1em plus
+%   0.5em minus 0.4em\relax Harlow, England: Addison-Wesley, 1999.
+%
+% \end{thebibliography}
 
 % biography section
 % 

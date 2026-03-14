@@ -3,11 +3,14 @@
 이 저장소는 SHVD 연구를 위해 최상위에서 `paper/`와 `environment/`로 역할을 분리해 관리합니다.  
 논문 작성 자산과 시뮬레이션/실험 자산이 섞이면서 동선이 복잡해지는 문제를 줄이기 위해 구조를 재정리했습니다.
 
+**저장소:** [dmlcjs0327/2026_RL](https://github.com/dmlcjs0327/2026_RL)
+
 ## 현재 구조 개요
 
 - `paper/`: 논문 원고, 참고문헌, 논문 설계 문서
 - `environment/`: Aerial Gym 기반 시뮬레이터, 강화학습 코드, 실험 스크립트, 환경 문서
 - `.vscode/`: Cursor/VS Code 작업 설정. LaTeX Workshop와 Tectonic 기반 PDF 빌드 설정 포함
+- `.cursor/rules/`: Cursor 규칙 (예: GitHub 푸시 원격 등)
 - `.gitignore`: 학습 산출물, 체크포인트, LaTeX 빌드 산출물 무시 규칙
 - `LICENSE`: 저장소 라이선스
 
@@ -17,11 +20,12 @@
 
 논문 작성 관련 자산을 모아 둔 작업 공간입니다.
 
-- `template.tex`: 현재 메인 원고 템플릿
-- `Definitions/`: MDPI 클래스 및 스타일 파일
+- `main.tex`: 메인 원고
 - `references.bib`: 원고에서 사용할 참고문헌 데이터
-- `reference_papers/`: 수집한 참고 논문과 BibTeX 정리 파일
-- `docs/`: 논문 실험 설계, 베이스라인 정의, 논문 컨텍스트 메모
+- `reference_papers/`: 수집한 참고 논문 PDF, 요약 텍스트(`*.txt`), 관련 정리(`related_work_summaries.md`)
+- `figures/`: 논문용 그림
+- `writing_info.md`, `paper_direction.md`: 논문 컨텍스트·방향 메모
+- `download_papers.py`, `verify_papers.py`: 참고문헌 다운로드·검증 스크립트
 - `.latex-build/`: LaTeX Workshop/Tectonic 빌드 산출물
 
 ### `environment/`
@@ -46,22 +50,23 @@
 - `env_manager/`: 시뮬레이션 환경 및 에셋 관리
 - `robots/`: 기체/로봇 모델 추상화
 - `sensors/`: 카메라, LiDAR, IMU 등 센서 관련 코드
+- `control/`: 제어기 관련 코드
 - `sim/`: 시뮬레이터 빌더와 실행 구성
 - `sim2real/`: sim-to-real 관련 자산과 추론/변환 코드
-- `nn/`, `utils/`, `assets/`: 보조 신경망 모듈, 유틸리티, 에셋 로딩 코드
+- `nn/`, `utils/`, `assets/`, `registry/`, `examples/`: 보조 신경망 모듈, 유틸리티, 에셋 로딩, 레지스트리, 예제
 
 ## 문서 위치
 
 ### 논문 문서
 
-- 논문 작업 시작: `paper/template.tex`
-- 논문 컨텍스트 메모: `paper/docs/drones_paper_context.md`
-- 실험 설계 문서: `paper/docs/experiments/`
-- 참고 논문: `paper/reference_papers/`
+- 논문 원고: `paper/main.tex`
+- 논문 방향·컨텍스트: `paper/paper_direction.md`, `paper/writing_info.md`
+- 참고 논문·요약: `paper/reference_papers/`, `paper/references.bib`
 
 ### 환경 문서
 
 - 환경 진입점: `environment/README.md`
+- 사용법 요약: `environment/USAGE.md`
 - 실행 명령 모음: `environment/docs/setup/terminal_commands.md`
 - 개발/실험 환경 스펙: `environment/docs/setup/environment_spec.md`
 - 분석 및 테스트 기록: `environment/docs/analysis/`
@@ -71,9 +76,9 @@
 
 ### 논문 작업
 
-1. `paper/template.tex`에서 원고 작성
-2. `paper/docs/experiments/`에서 실험 설계와 표/그림 구조 정리
-3. `paper/reference_papers/`와 `references.bib`로 참고문헌 관리
+1. `paper/main.tex`에서 원고 작성
+2. `paper/paper_direction.md`, `paper/writing_info.md`에서 설계·표/그림 구조 정리
+3. `paper/reference_papers/`와 `paper/references.bib`로 참고문헌 관리
 
 ### 실험 작업
 
@@ -83,9 +88,11 @@
 
 ## 빠른 시작
 
+저장소 루트에서:
+
 ```bash
-cd /home/user/aerial_gym_simulator/environment/aerial_gym/rl_training/rl_games
+cd environment/aerial_gym/rl_training/rl_games
 python runner.py --task=position_setpoint_task --num_envs=256 --headless=True --use_warp=True
 ```
 
-논문 PDF 빌드는 `paper/template.tex`를 저장하면 Cursor의 LaTeX Workshop 설정에 따라 자동으로 수행됩니다.
+논문 PDF 빌드는 `paper/main.tex`를 저장하면 Cursor의 LaTeX Workshop 설정에 따라 자동으로 수행됩니다.
