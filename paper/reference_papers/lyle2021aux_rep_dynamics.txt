@@ -1,0 +1,861 @@
+      On The E↵ect of Auxiliary Tasks on Representation Dynamics
+
+
+
+       Clare Lyle*                Mark Rowland*                  Georg Ostrovski                 Will Dabney
+    University of Oxford            DeepMind                        DeepMind                      DeepMind
+
+
+                      Abstract
+
+      While auxiliary tasks play a key role in shap-
+      ing the representations learnt by reinforce-
+      ment learning agents, much is still unknown
+      about the mechanisms through which this
+      is achieved. This work develops our under-
+      standing of the relationship between auxil-
+      iary tasks, environment structure, and repre-
+      sentations by analysing the dynamics of tem-
+      poral di↵erence algorithms. Through this ap-
+      proach, we establish a connection between               Figure 1: An example of qualitatively di↵erent value
+      the spectral decomposition of the transition            function dynamics for a two-state MDP for 1-step tem-
+      operator and the representations induced by             poral di↵erence learning and Monte Carlo learning,
+      a variety of auxiliary tasks. We then lever-            with fixed point V ⇡ in red.
+      age insights from these theoretical results to
+      inform the selection of auxiliary tasks for             down to the e↵ects on the dynamics of the representa-
+      deep reinforcement learning agents in sparse-           tions of reinforcement learning agents.
+      reward environments.
+                                                              We begin by considering a learning dynamics frame-
+                                                              work for studying the e↵ects of auxiliary tasks; see
+                                                              Figure 1 for a toy illustration, with full details given
+1     Introduction
+                                                              in Section 3. The central idea behind this framework
+                                                              is that it is not just what an agent learns that dictates
+Auxiliary tasks have provided robust benefits to deep         how its representation is shaped, but how it learns.
+reinforcement learning agents (Jaderberg et al., 2017a;
+Mirowski et al., 2017; Lin et al., 2019). A commonly-         This framework provides a model for representation
+held belief is that these benefits are mediated through       learning in RL. Under this model, even in the case of
+improved representation learning. This hypothesis             value-based algorithms, it is shown that agents auto-
+naturally raises a number of questions that, broadly          matically incorporate the transition structure of the
+speaking, remain open. What makes a good auxiliary            environment into their representations. We character-
+task? Can we predict how an auxiliary task will a↵ect         ize the dynamics induced by a number of auxiliary
+an agent’s representation? When should one auxiliary          tasks, with particular focus on ensemble predictions
+task be used instead of another? More generally, how          and random cumulant functions, and prove conver-
+should this hypothesis about the mechanism of aux-            gence of the induced representations to subspaces de-
+iliary tasks itself be tested? The complex interacting        fined by certain decompositions of the environment’s
+components of large-scale deep reinforcement learning         transition operator. We then consider the e↵ectiveness
+agents make it difficult to extract general insights. In      of auxiliary tasks in sparse-reward environments, and
+this work we aim to shed light on the answers to these        via the use of the learning dynamics framework, con-
+questions by distilling the benefits of auxiliary tasks       struct a hypothesis as to which auxiliary tasks should
+                                                              be particularly well suited to such environments; we
+Proceedings of the 24th International Conference on Artifi-   then test these developments in the Arcade Learning
+cial Intelligence and Statistics (AISTATS) 2021, San Diego,   Environment (Bellemare et al., 2013), demonstrating
+California, USA. PMLR: Volume 130. Copyright 2021 by          strong performance with random cumulant auxiliary
+the author(s). *Equal contribution.
+                                                              tasks.
+                        On The E↵ect of Auxiliary Tasks on Representation Dynamics
+
+
+2     Background                                            does not permit generalisation in the course of learn-
+                                                            ing. Instead, it is typical to parametrise V 2 RX
+We consider a Markov decision process (X , A, P, R)         through a feature map : X ! RK and weight vector
+comprising a finite state space X , finite action space     w 2 RK , leading to a factorisation of the form
+A, transition kernel P : X ⇥ A ! P(X ), and reward
+distribution function R : X ⇥ A ! P(R).                                        V (x) = h (x), wi .
+
+2.1    Value-based reinforcement learning                   Such a parametrisation may be amenable to more ef-
+                                                            ficient learning, for example if abstracts away unim-
+Two key tasks in reinforcement learning are policy          portant information, allowing for generalisation be-
+evaluation and policy optimisation. The former is           tween similar states. Even more concisely, writing
+specified by a policy ⇡ : X ! P(A). An agent                   2 RX ⇥K for the matrix with rows (x) yields
+using the policy ⇡ to interact with the environment
+generates a sequence of states, actions and rewards                                V =     w.                     (1)
+(Xt , At , Rt )t 0 . The performance
+                          P          of the agent is sum-
+marised by the return t 0 t Rt , for a discount factor      The quantity is often referred to as the agent’s rep-
+  2 [0, 1). The goal of policy evaluation is to (approx-    resentation of the environment (Boyan, 1999; Levine
+imately) compute the value function                         et al., 2017; Bertsekas, 2018; Chung et al., 2018; Belle-
+                          P                                 mare et al., 2019; Dabney et al., 2020). In many
+            V ⇡ (x) = E⇡ [ t 0 t Rt | X0 = x] ,             small- and medium-scale applications, the represen-
+                                                            tation is fixed ahead of time, and only w is updated
+for all x 2 X . Policy optimisation consists of finding a
+                                                            during learning; this is the linear function approxima-
+policy ⇡ ⇤ 2 P(A)X that maximises the expected re-
+                                                            tion regime. Many common choices of features relate
+turn from all possible initial states. The value function
+                                                            to various decompositions of operators associated with
+associated with ⇡ ⇤ is denoted V ⇤ .
+                                                            the transition operators P ⇡ . In deep reinforcement
+Crucial to the value-based approach to reinforcement        learning, however, and w are learnt simultaneously.
+learning are the Bellman operators. The one-step eval-
+uation operator associated with a policy ⇡ is the func-     2.3   Representation learning and auxiliary
+tion T ⇡ : RX ! RX defined by                                     tasks
+       (T ⇡ V )(x, a) = E⇡ [R0 + V (X1 ) | X0 = x] .
+                                                            To perfectly express a value function V ⇡ in the form
+                                                            of Equation (1), the following condition is necessary:
+                       P operator P 2 R
+                                         ⇡      X ⇥X
+Introducing the transition                         de-
+fined by P ⇡ (x0 |x) = a2A ⇡(a|x)P (x0 |x, a), and the
+expected reward vector R⇡ 2 RX defined by R⇡ (x) =                                h i ◆ hV ⇡ i ,                  (2)
+E⇡ [R0 |X0 = x], this can be expressed even more suc-
+cinctly in operator notation as                             where h i denotes the column span of , and hV ⇡ i
+                                                            denotes the one-dimensional subspace of RX spanned
+                  T ⇡ V = R⇡ + P ⇡ V .                      by V ⇡ . However, this condition is not sufficient for ef-
+                                                            ficient sample-based learning (Du et al., 2019). There
+The Bellman optimality operator is the function T ⇤ :
+                                                            are several reasons for this; for some intuition, consider
+RX ⇥A ! RX ⇥A defined by
+                                                            that since value functions are typically learnt through
+    (T ⇤ V )(x) = max E[R0 + V (X1 )|X0 = x, A0 = a] .      bootstrapping algorithms, the agent is required to ac-
+                a2A
+                                                            curately express a sequence of value functions as its
+                                                            estimates are updated, and thus a good representation
+Repeated application of T ⇡ (resp., T ⇤ ) to any initial    should also allow such intermediate value functions to
+value function converges to V ⇡ (resp., V ⇤ ) (Bertsekas    be expressed in the course of learning (Dabney et al.,
+and Tsitsiklis, 1996). Popular algorithms such as Q-        2020).
+learning (Watkins and Dayan, 1992), which form the
+basis of many deep RL agents (Mnih et al., 2015), can       Despite the importance of the representation , it re-
+be viewed as approximating the iterative application        mains unclear how exactly the notion of a good repre-
+of T ⇤ and related operators (Tsitsiklis, 1994; Jaakkola    sentation in this sense should be formalised. In spite
+et al., 1994; Bertsekas and Tsitsiklis, 1996).              of this, representation learning is a hugely important
+                                                            aspect of deep reinforcement learning. A consistent
+2.2    Features and representations                         finding in empirical deep RL research is that requir-
+                                                            ing the agent to use its representation to predict other
+In many environments, it is impractical to store a value    functions of state, referred to as auxiliary tasks, in ad-
+function as a table indexed by states, and further this     dition to its primary task of learning an optimal policy,
+                          Clare Lyle*, Mark Rowland*, Georg Ostrovski, Will Dabney
+
+
+can lead to considerable boosts in performance. Exam-              However, the solution in Equation (4) also describes
+ples of commonly-used auxiliary tasks include predict-             the trajectory by which Vt reaches this limiting value.
+ing the expected return associated with other reward               Figure 1 provides an illustration of this in a small
+functions (Sutton et al., 2011), other discount factors            MDP; the value functions accumulate along a partic-
+(Fedus et al., 2019), and other policies (Dabney et al.,           ular affine subspace of RX prior to convergence.
+2020), as well as other properties of the return distri-
+                                                                   This phenomenon can in fact be formalised. To do
+bution (Bellemare et al., 2017) and other aspects of the
+                                                                   so, we need a notion of distance between subspaces
+environment observations (Jaderberg et al., 2017a),
+                                                                   of RX . The following definition follows Ye and Lim
+amongst others. We discuss prior work on auxiliary
+                                                                   (2016). Intuitively, it can be thought of as generalizing
+tasks in greater detail in Section 6. A popular hy-
+                                                                   the notion of an angle between vectors to subspaces.
+pothesis is that auxiliary tasks add further constraints
+to Expression (2), requiring the representation       to           Definition 3.2. For two K-dimensional subspaces
+contain more functions of interest than just V ⇡ in its            Y1 , Y2  RX , the principal angles ✓1 , . . . , ✓K 2 [0, ⇡/2]
+column span (Bellemare et al., 2019; Dabney et al.,                between the subspaces are defined by taking orthonor-
+2020).                                                             mal matrices Y1 2 RX ⇥K and Y2 2 RX ⇥K the
+                                                                   columns of which span Y1 and Y2 respectively, and
+                                                                   defining ✓k = cos 1 ( k (Y1> Y2 )), where k (A) is the
+3     Learning dynamics                                            k th singular value of the matrix A. One can check
+                                                                   that this definition is independent of the matrices Y1
+Our aim in the remainder of the paper is to develop                and Y2 , depending only on the subspaces Y1 , Y2 them-
+an understanding of the ways in which auxiliary tasks              selves. The Grassmann distance d(Y1 , Y2 ) between Y1
+shape representations in RL. Our central results estab-                                                PK
+                                                                   and Y2 is then defined as k✓k2 = ( k=1 ✓k2 )1/2 .
+lish connections between decompositions of transition
+operators, commonly used in static feature selection,              With these definitions in hand, we now give a precise
+and certain classes of auxiliary tasks used in deep rein-          version of the statement alluded to in the discussion
+forcement learning. To build up to these results, in this          and figure above. We make some simplifying assump-
+section we examine learning algorithms in the absence              tions to avoid focusing on technicalities here, and give
+of auxiliary tasks, first considering tabular learning al-         a discussion of the more general case in Appendix F.
+gorithms, and then moving to the case where represen-
+                                                                   Assumption 3.3. P ⇡ is real-diagonalisable, with
+tations and feature weights are learnt simultaneously.
+                                                                   strictly decreasing eigenvalue sequence 1 = | 1 | >
+                                                                   | 2 | > · · · > | |X | |, and corresponding right-
+3.1    Warm-up: Tabular value function                             eigenvectors U1 , . . . , U|X | .
+       dynamics
+                                                                   Proposition 3.4. Under Assumption 3.3, and (Vt )t 0
+We consider the following one-step temporal di↵erence              the solution to Equation (3), for almost every1 initial
+(TD) continuous-time learning dynamics:                            condition V0 , we have
+
+      @t Vt (x) = E⇡ [R0 + Vt (X1 )|X0 = x]       Vt (x) ,                          d(hVt    V ⇡ i, hU1 i) ! 0 .
+
+for each x 2 X , which may also be written                         The behaviour described by Proposition 3.4 is exhib-
+                     ⇡             ⇡                               ited in Figure 1, as the value function Vt approaches
+        @t Vt (x) = R (x) + (P Vt )(x)        Vt (x) ,
+                                                                   the affine subspace in direction (1, 1) prior to converg-
+or in full matrix notation,                                        ing to V ⇡ . A more general version of this statement
+                                                                   can also be given with an ensemble of K value func-
+              @ t Vt =   (I      P ⇡ )Vt + R⇡ .              (3)   tions, which indicates that yet more information about
+                                                                   the environment is contained in the learnt collection.
+The di↵erential equation in (3) is an affine autonomous            The proofs of these results relate to the classical power
+system, and is straightforwardly solvable.                         method in linear algebra.
+Lemma 3.1. If (Vt )t 0 satisfies Equation (3) with ini-            Proposition 3.5. Under Assumption 3.3, and
+                                                                       (k)
+tial condition V0 at time t = 0, then we have                      (Vt )t 0 the solution to Equation (3) for each k =
+                                                                                                                       (k)
+                                                                   1, . . . , K, for almost every initial condition (V0 )K k=1 ,
+        Vt = exp( t(I         P ⇡ ))(V0   V ⇡) + V ⇡ .       (4)   we have
+                                                                                 (k)
+We recover as a straightforward corollary the well-                         d(hVt       V ⇡ | k 2 [K]i, hU1:K i) ! 0 .
+known result that Vt ! V ⇡ as t ! 1, since all eigen-                  1
+                                                                         In the measure-theoretic sense that the set of excluded
+values of (I   P ⇡ ) have strictly positive real part.             initial conditions V0 has Lebesgue measure 0.
+                          On The E↵ect of Auxiliary Tasks on Representation Dynamics
+
+
+  Key insight.                                                          Further, SG[] denotes a stop-gradient, indicating that
+  Even in an environment with no reward signal at                       we treat the instances of t and wt within the expres-
+  all (in which case V ⇡ = 0), an agent performing                      sion as constants with regard to computing derivatives;
+  TD learning still picks up information about the                      this reflects the fact that temporal di↵erence learning
+  transition structure of the environment within its                    is a semi-gradient method.
+  value function.                                                       The use of a single loss to learn both the representation
+                                                                        and weights corresponds to the approach taken in deep
+Due to the importance of the vectors U1:K in this                       RL, and we will use these dynamics as an idealized
+analysis, we introduce the term eigen-basis functions                   model of the deep RL setting. While this model ig-
+(EBFs) to describe them.                                                nores some practicalities of deep RL (such as visitation
+                                                                        distributions, implicit bias from the function approx-
+We observe that a similar analysis, indicating similar
+                                                                        imation architecture, and stochasticity introduced by
+behaviour, is possible for related learning algorithms
+                                                                        mini-batch training), it allows us to obtain valuable in-
+such as n-step temporal di↵erence learning and TD( );
+                                                                        sights into representation dynamics which, as we shall
+see Appendix E for further details. In contrast, Monte
+                                                                        see in Section 5, accurately predict the behaviour of
+Carlo learning dynamics correspond to the di↵erential
+                                                                        deep RL agents.
+equation
+                                                                        Lemma 3.6. Let t and wt parameterize a value
+             @t Vt = (I        P ⇡ ) 1 R⇡     Vt ,                      function approximator as defined above. Then
+
+which has the solution                                                          @t   t = ↵(R
+                                                                                               ⇡
+                                                                                                   + P⇡       t wt
+                                                                                                                                >
+                                                                                                                         t wt )wt ,    (7)
+                                                                                           >   ⇡              ⇡
+ Vt = e t (V0      (I     P ⇡ ) 1 R⇡ ) + (I          P ⇡ ) 1 R⇡ .               @ t wt =   t (R +         P       t wt      t wt ) .   (8)
+
+The trajectory associated with this solution simply lin-
+                                                                        This joint flow on t and wt leads to much richer be-
+early interpolates between V0 and V ⇡ , as illustrated in
+                                                                        haviour than the flow considered on value functions
+Figure 1, and does not pick up any additional infor-
+                                                                        in the previous section. Without further assumptions,
+mation about the environment in the value function as
+                                                                        the evolution of the representation t may be com-
+learning proceeds. See Appendix E for further details.
+                                                                        plex, and will not necessarily incorporate environment
+This example serves to illustrate that it is not just
+                                                                        information as described for the case of value functions
+what an agent learns (V ⇡ ), but how the agent learns
+                                                                        in Proposition 3.5. In particular, in sparse reward en-
+that plays a key, measurable role in what environment
+                                                                        vironments, the agent may learn to predict a near-zero
+information is picked up in its value function. We now
+                                                                        value function by setting the weights wt close to zero,
+apply this perspective to representation learning.
+                                                                        which would e↵ectively prevent any further updating
+                                                                        of the features t , ruling out the possibility of a result
+3.2   Representation dynamics
+                                                                        analogous to Proposition 3.5.
+Recall the parametrisation of V 2 RX from Sec-
+tion 2.2, taking the form                                               4    Auxiliary task dynamics
+                          V =     w,
+                                                                        Having studied the temporal di↵erence learning dy-
+for    2 R  X ⇥K
+                , w 2 R . Central to deep reinforce-
+                           K                                            namics in Equation (7) & (8), we now examine
+ment learning agents is the idea that       and w are                   how auxiliary value-prediction tasks influence the be-
+simultaneously learnt from a single RL loss. As in                      haviour of the agent’s representation during the learn-
+the value function case, we will focus on the dynamics                  ing process.
+with single-step temporal di↵erence learning; remarks                   As described above, developing a granular description
+on other learning algorithms are given in Appendix E.                   of the joint learning dynamics of the representation
+The dynamics associated with single-step TD learning                    and weights of the learner is a complex task, and so
+are given by                                                            we focus on the limiting case in which the number
+             1                                                          of auxiliary tasks is large relative to the dimension-
+ @t   t =   ↵ r t kR⇡ + SG[ P ⇡        t wt ]
+                                                            2
+                                                      t wt k2 ,   (5)   ality of the representation. We conclude that under
+             2
+             1                                                          certain conditions, representations learnt in the many-
+ @ t wt =      rwt kR⇡ + SG[ P ⇡        t wt ]
+                                                            2
+                                                      t wt k2 ,   (6)   task limit bear a close connection with the eigen-basis
+             2
+                                                                        functions described in Section 3.1, and also resolvent
+where ↵, 2 [0, 1) are learning rates, implying that                     singular basis functions, a new decomposition intro-
+features and weights may be learnt at di↵erent rates.                   duced in Section 4.2. The reader may find it useful to
+                             Clare Lyle*, Mark Rowland*, Georg Ostrovski, Will Dabney
+
+
+refer to Appendix G for a more detailed discussion of                 In contrast to the case described in Section 3.2, this re-
+these decompositions.                                                 sult indicates that the introduction of auxiliary tasks
+                                                                      leads to useful environment information being incor-
+4.1    Ensemble value prediction                                      porated into the representation. Indeed, the dynamics
+                                                                      described above imply the following convergence re-
+We begin by considering the auxiliary task of ensemble                sult, analogous to Proposition 3.5.
+value prediction (Osband et al., 2016; Anschel et al.,                Corollary 4.2. Under the feature flow (9) with wtm
+2017; Agarwal et al., 2020). Rather than making a                     fixed at initialization for each i = 1, . . . , M and As-
+single prediction of the value function Q⇡ , the learner              sumption 3.3, for almost all initialisations 0 , we have
+makes M 2 N separate predictions as linear func-                      when R⇡ = 0
+tions of a common representation M , using M in-
+dependently initialized weights matrices wm 2 RK                                 d(h   t i, hU1:K i) ! 0 ,   as t ! 1.
+(m = 1, . . . , M ). We note that while at initialization
+  0 2R
+  M      X ⇥d
+                is independent of M , its dynamics do de-
+pend on M through the contribution of the weights.
+                                                                        Key insight.
+Simultaneous temporal di↵erence learning on all pre-
+                                                                        Under the conditions of Theorem 4.1 and Corol-
+dictions leads to the following dynamics:
+                                                                        lary 4.2, the ensemble auxiliary tasks cause the
+              M
+              X                                                         agent’s representation to align with EBFs.
+       M                                                m >
+  @t   t =↵         (R⇡ + P ⇡       M m
+                                    t wt
+                                                M m
+                                                t wt )(wt ) ,
+              m=1
+                                                                (9)   We show in Appendix I that this behaviour is observed
+                                                                      in practice when M         K and the value of wtm is
+               M >
+  @t wtm = (         ⇡
+               t ) (R +         P⇡       M m
+                                         t wt
+                                                       m
+                                                    t wt ) .   (10)   fixed at initialization. We additionally compare the
+                                                                      representations learned when wtm is allowed to vary
+The following result characterises the representation                 over training. Here we find empirically that allowing
+learnt by the agent in the many-tasks limit, again es-                the weights to vary during training induces dynamics
+tablishing a connection to EBFs; we follow the ap-                    that di↵er from those predicted by Theorem 4.1 for
+proach described by Arora et al. (2019b) in fixing the                the fixed-weights setting. To illustrate this, we follow
+linear weights associated with the value function; this               the evolution of a single column of t , i.e. a single
+dramatically simplifies our analysis, while still describ-            feature vector t , trained with the ensemble prediction
+ing practical settings in which the features and weights              dynamics of Equations (9) & (10) on a simple four-
+are trained separately as in Chung et al. (2018).                     rooms gridworld environment in Figure 2.
+Theorem 4.1. For M 2 N, let ( M       t )t 0 be the solu-
+tion to Equation (9), with each wtm for m = 1, . . . , M
+                                          2
+initialised independently from N (0, M      ), and fixed
+throughout training ( = 0). We consider two set-
+                                                       1
+tings: first, where the learning rate ↵ is scaled as M
+       2                                     2     1
+and M     = 1 for all M , and second where M    = M and
+the learning rate ↵ is equal to 1. These two settings
+yield the following dynamics, respectively:
+          M P
+ lim @t   t =        (I      P ⇡)    M
+                                     t     , and               (11)
+M !1
+          M D                             ⇡ >
+ lim @t   t =        (I      P ⇡)    M
+                                     t + R ✏ , ✏ ⇠ N (0, I) .
+M !1
+                                                               (12)
+
+The corresponding limiting trajectories for a fixed ini-            Figure 2: Visualization of a single column of t (i.e.
+tialisation 0 2 RX ⇥K , are therefore given respec-                 feature vector) after application of the ODE in Equa-
+tively by                                                           tion (7) for t 2 [0, 100] in the four rooms environment,
+        M P
+                                                                    with K = 10 and M = 20. Early in its trajectory,
+ lim    t = exp(      t(I       P ⇡ )) 0 , and              (13)      t exhibits similarity to smooth eigenfunctions (e.g.
+M !1
+        M D                                                         the  eigenfunction corresponding to the 5th greatest
+ lim    t = exp(      t(I       P ⇡ ))( 0 (I        P ⇡ ) 1 R⇡ "> ) eigenvalue                                            ⇡
+M !1                                                                              5 which we plot in the top right) of P ,
+
+                      + (I       P ⇡ ) 1 R⇡ "> , ✏ ⇠ N (0, I) .     but later converges to non-smooth eigenfunctions (e.g.
+                                                            (14)    the eigenfunction corresponding to eigenvalue 105 , the
+                                                                    most negative eigenvalue, plotted in the bottom right).
+                          On The E↵ect of Auxiliary Tasks on Representation Dynamics
+
+
+        Auxiliary task          Dynamics (r = 0)                  1 (r = 0)              1 (r 6= 0)           Limit of h     t      1i
+
+          Ensemble                      (I  P ⇡) t                   0             (I        P ⇡ ) 1 r✏>          EBFs of P ⇡
+                                             ⇡
+      Random cumulants              (I    P ) t + Z⌃         (I     P ⇡ ) 1 Z⌃     (I        P ⇡ ) 1 Z⌃           EBFs of P ⇡
+      Additional policies              (I   P ⇡) t                   0            (I        P ⇡ ) 1 R ⇡ ✏>        EBFs of P ⇡¯
+         Multiple s                    (I   P ⇡) t                   0            (I        P ⇡ ) 1 R ⇡ ✏>        EBFs of P ⇡
+
+Table 1: Summary of dynamics and limiting solutions under some common auxiliary tasks in the limit of
+infinitely-many prediction outputs. For additional policies, ⇡ denotes the average of the finite set of policies
+⇡1 , . . . , ⇡L under consideration (L fixed and independent of M ), and for multiple discount factors, denotes the
+average of the discount factors 1 , . . . , L under consideration.
+We visualize t along with two illustrative eigenfunc-                 in the absence of reward, the limiting distribution in-
+tions of the transition matrix P ⇡ , corresponding to                 duced by random cumulant auxiliary tasks dynamics
+one positive and one negative eigenvalue. We observe                  described in Equation (15) is not the zero subspace.
+that while the feature t quickly evolves to resemble                  Theorem 4.3. For fixed M 2 N, let the random re-
+the smooth eigenfunction corresponding to the posi-                   wards (rm )M                    m M
+                                                                                  m=1 and weights (w )m=1 be as defined
+tive eigenvalue for small values of t, it later converges             above, let ↵ = 1, and consider the representation dy-
+to the non-smooth eigenfunction corresponding to the                  namics in Equation (15), with weights fixed through-
+most negative eigenvalue of the transition matrix P ⇡ .               out training ( = 0). Let ⌃ denote the covariance
+While we leave further analysis to future work, this ex-              matrix of the random cumulant distribution. Then
+ample hints at an intriguing relationship between the                            M
+                                                                                 X
+EBFs and the joint representation dynamics.                             lim
+                                                                                                  D
+                                                                                     rm (wm )> = Z⌃ ⇠ N (0, ⌃), and
+                                                                       M !1
+                                                                              m=1
+4.2    Random cumulants                                                          M D
+                                                                        lim      t = exp(       t(I     P ⇡ ))(   0    (I        P ⇡ ) 1 Z⌃ )
+                                                                       M !1
+In the case of zero rewards, our previous results show
+                                                                                  + (I         P ⇡ ) 1 Z⌃ .
+that whilst from the perspective of subspaces the rep-
+resentation approaches the EBF subspace in Grass-
+                                                                      As the columns of Z⌃ are mean-zero, uncorrelated,
+mann distance, in Euclidean distance the representa-
+                                                                      with covariance matrices ⌃, the limiting distribution
+tion is approaching the zero matrix pointwise. This
+                                                                      of each column of 1 = limt!1 limM !1 M     t has co-
+has important implications for the scenario of large-
+                                                                      variance ⌃ > , where is the resolvent (I      P ⇡ ) 1.
+scale sparse-reward environments, in which the agent
+may not encounter rewards for long periods of time,                   Corollary 4.4. Under the feature flow (15) with wtm
+and indicates that the agent’s representation is at risk              fixed at initialization for each i = 1, . . . , M and As-
+of collapsing in such cases.                                          sumption 3.3, for almost all initialisations 0 , we have
+                                                                      when R⇡ = 0
+Motivated by this analysis, we consider a means of al-
+                                                                                        M
+leviating this representation collapse, by learning value                 d( lim h      t        1 i, hU1:K i) ! 0 ,        as t ! 1.
+                                                                              M !1
+functions for randomly generated cumulants (Osband
+et al., 2018; Dabney et al., 2020). Mathematically,                   Theorem 4.3 indicates that the left-singular vectors
+the agent again makes many predictions from a com-                    of ⌃1/2 (or equivalently, the right-eigenvectors of
+mon representation, with each prediction indexed by                     ⌃ > ) are key to understanding the e↵ects on ran-
+m = 1, . . . , M attempting to learn the value function               dom cumulants on representations; we introduce the
+associated with a randomly drawn reward function                      term resolvent singular basis functions (RSBFs) to re-
+rm 2 RX under the policy ⇡. Thus, the agent’s pa-                     fer to these vectors in the canonical case ⌃ = I.
+rameters are the representation and a set of weights
+wm for each prediction. The learning dynamics are                        Key insight.
+then given by:                                                           With random cumulant auxiliary tasks, under the
+                                                                         assumptions of Theorem 4.3 and Corollary 4.4,
+               M
+               X
+        M                                            m >
+                                                                         the distribution of the limiting representation
+  @t    t =↵         (rm+ P ⇡   M m
+                                t wt
+                                             M m
+                                             t wt )(wt ) ,               does not collapse, and is characterized by the RS-
+               m=1
+                                                                         BFs of P ⇡ , while the trajectory it follows to reach
+                                                             (15)
+                                                                         this subspace is determined by the EBFs of P ⇡ .
+                 M > m
+  @t wtm =   (   t ) (r +       P   ⇡   M m
+                                        t wt
+                                                     m
+                                                  t wt ) .   (16)
+                                                                      These decompositions of P ⇡ bear deep connections
+The main result of this section is to show that, even                 to prior work on feature learning. EBFs correspond
+                              Clare Lyle*, Mark Rowland*, Georg Ostrovski, Will Dabney
+
+
+to the eigendecomposition of the successor representa-                       and its corresponding dynamics, obtaining conver-
+tion, which can be explicitly related to the proto-value                  gence to a direct sum of the limiting representation of
+functions described by Mahadevan (2009) when the                          each task. This suggests that the benefits of auxiliary
+transition matrix P ⇡ corresponds to that of a random                     tasks might be maximized by appropriate initialization
+walk policy (Machado et al., 2018b). For symmetric                        schemes which encourage the representations learned
+P ⇡ we obtain an additional correspondence between                        for each task to be independent.
+EBFs and RSBFs, though we note that when P ⇡ is not
+symmetric the RSBFs may di↵er from both the EBFs
+and the singular value decomposition of the transition
+                                                                          5     Experiments
+matrix P ⇡ . We provide further discussion of RSBFs
+and comparisons against existing concepts in feature                      In this section, we complement the theoretical results
+selection in Appendix G.                                                  above with empirical investigations in both tabular
+                                                                          and deep reinforcement learning settings.
+In Appendix H we show that RSBFs can be viewed
+as Bayes-optimal features in the sense that they mini-                    5.1   Feature generalisation across the
+mize the expected value function approximation error                            value-improvement path
+given an isotropic Gaussian prior on an unknown re-
+ward function.                                                            Having established connections between the represen-
+                                                                          tations induced by auxiliary tasks and several decom-
+4.3    Analysis of additional auxiliary tasks                             positions of the environment transition operator, we
+                                                                          now turn to the question of how useful these repre-
+The infinite-task limit simplifies the analysis of a broad                sentations are to a reinforcement learning agent. In
+range of auxiliary tasks, and analogous results to The-                   particular, we address how well representations learnt
+orem 4.1 can be easily derived for families of auxiliary                  under one policy generalize under the policy improve-
+tasks which predict returns associated with additional                    ment step to approximate future value functions, with
+policies and multiple discounts factors. We provide a                     particular attention paid to EBFs and RSBFs, the de-
+summary of these results in Table 1, including their                      compositions that feature in our earlier analysis.
+full statements and derivations in Appendix B.                            To address this question empirically we run tabular
+We consider two additional classes of auxiliary task:                     policy iteration on a stochastic chain MDP, yielding a
+predicting the values of multiple policies (Dabney                        sequence of policies (⇡j )Jj=1 and associated value func-
+et al., 2020), and predicting value under multiple dis-                   tions (Vj )Jj=1 . We then compute EBFs and RSBFs
+count factors (Fedus et al., 2019). Under the multi-                      associated with P ⇡ , and compute the acute angle be-
+ple policies auxiliary task, the agent’s objective is to                  tween Vj and the subspace spanned by these features,
+learn a set of value functions V 1 , . . . , V M such that                for each j 2 [J]; this is in fact equal to a generalisation
+V i (x) = E⇡i [R⇡i (x) + P ⇡i V i (x)]. Under the multiple                of the Grassmann distance for subspaces of unequal di-
+discount factors auxiliary task, the agent’s objective is                 mension (Ye and Lim, 2016). We also compare against
+analogously to find V i (x) = E⇡i [R⇡ (x) + i P ⇡ V i (x)]                a baseline of isotropic randomly-generated features;
+for i 2 1 , . . . , k . We consider an ensemble predic-                   full experimental details are provided in Appendix D.
+tion variant of these objectives, where given a fixed
+set of k policies, we train an ensemble of M predictors
+V 1,1 , . . . , V m,1 , . . . , V 1,k , . . . , V m,k , where m = M
+                                                                  k and
+the value function V i,j is trained on policy (respec-
+tively discount factor) ⇡j (respectively j ).
+In both cases, under the conditions of the previous
+theorems the dynamics of the ensemble converge to
+the dynamics induced by the mean of the set of aux-
+iliary tasks, implying the counter-intuitive result that
+training with multiple auxiliary tasks doesn’t provide
+additional utility over the single task setting. This ap-
+parent shortcoming can be addressed by ensuring that
+the weights corresponding to each auxiliary task ⇡i or
+  i are initialized in orthogonal subspaces, so that the
+vector space V in which the representation evolves can
+                                                                          Figure 3: Transfer of EBFs, RSBFs, and RFs across
+be decomposed as V = i2[1,k] Vi . In this case, we ob-
+                                                                          the value-improvement path of a chain MDP, with and
+tain an analogous decomposition of the representation
+                                                                          without the value function as an additional feature.
+                               On The E↵ect of Auxiliary Tasks on Representation Dynamics
+
+
+
+
+Figure 4: Learning curves for DDQN, DDQN+RC, DDQN+Ensemble, DDQN+REM, and QR-DQN agents on
+several dense reward ALE environments. Two games with sparse rewards are shown in the shaded box.
+
+
+                                                                       5.2    Auxiliary tasks for large-scale
+                                                                              environments with sparse rewards
+
+       ms_pacman   seaquest   qbert   pong   pong_sparse   montezuma
+                                                            revenge    We now consider the problem of deep RL agents in-
+                                                                       teracting with environments with sparse reward struc-
+                                                                       ture. Motivated by the theoretical results obtained in
+                                                                       earlier sections, we study the e↵ects of a variety of
+       ms_pacman   seaquest   qbert   pong   pong_sparse   montezuma
+                                                            revenge
+                                                                       auxiliary tasks in this setting; our analysis indicates
+                                                                       that random cumulants may be particularly e↵ective
+                                                                       in preventing representation collapse in such environ-
+       ms_pacman   seaquest   qbert   pong   pong_sparse   montezuma
+                                                            revenge
+                                                                       ments.
+                                                                       We modify a Double DQN agent (Van Hasselt et al.,
+Figure 5: Sweep over number of auxiliary heads for                     2016) with a variety of auxiliary tasks, including ran-
+RC, REM and Ensemble. Each bar corresponds to a                        dom cumulants (RC) (Dabney et al., 2020), random
+single game, presented in the same order as Figure 4.                  ensemble mixtures (REM) (Agarwal et al., 2020), an
+Relative score is the per-game score divided by the                    ensembling approach (Anschel et al., 2017), and also
+maximum over all algorithms and hyperparameters.                       compare with QR-DQN, a distributional agent (Dab-
+                                                                       ney et al., 2018). Full details of these agents, including
+Results are given in the top row of Figure 3 for the                   specific implementation details for deep RL versions of
+case of four features; each individual heatmap plots                   these auxiliary tasks, are given in Appendix D.
+Grassmann distances, with rows indexing the policy
+that generated the features, and columns indexing the                  We evaluate these agents on a series of Atari games
+policy yielding the target value function. In general,                 from the Arcade Learning Environment (Bellemare
+the RSBFs provide better transfer across policies in                   et al., 2013; Machado et al., 2018a), comprising Mon-
+the improvement path relative to random features and                   tezuma’s Revenge, Pong, MsPacman, Seaquest, and
+EBFs. For times j, j 0 2 [J], we observe that the Grass-               Q⇤ bert. In addition, we evaluate on a more challeng-
+mann distance between the RSBFs of P ⇡j and the                        ing, sparse reward, version of Pong in which the agent
+value function of j 0 , V ⇡j0 , increases as |j j 0 | does.            does not observe negative rewards.2
+
+We also evaluate transfer when the vector V ⇡j is added                Figure 4 shows the main results from these experi-
+to the set of features, in the bottom row of Figure 3.                 ments. Recall from Section 4 that the random cu-
+This contains the subspace to which the value func-                    mulant auxiliary task causes the agent’s representa-
+tions described in Proposition 3.5 converge, as the lim-               tion to converge to the RSBFs of P ⇡ in the idealized
+iting solutions can be described as being of the form                  setting. We hypothesize that this auxiliary task will
+V ⇡j + u for u 2 hU1:K i. Surprisingly, we find that in                therefore improve agent performance over ensemble-
+this setting the EBFs for ⇡j outperform RSBFs specif-                  based auxiliary tasks in sparse-reward environments.
+ically in predicting V ⇡j+1 . This can be observed in                  Our empirical results support our hypothesis, with the
+the upper o↵-diagonal the EBF plot in Figure 3. We                     random cumulant agent (DDQN+RC) generally per-
+conclude that the dynamics induced by TD updates                          2
+may be particularly beneficial to transfer between poli-                   We attempted a similar modification of the other three
+                                                                       dense reward games, but found no agent or configuration
+cies in the value-improvement path, and further study                  that was able to successfully learn on them. Full details,
+of this phenomenon is a promising avenue for future                    along with hyperparameters and results on these unsuc-
+work.                                                                  cessful modifications, are given in Appendix D.
+                        Clare Lyle*, Mark Rowland*, Georg Ostrovski, Will Dabney
+
+
+forming well in the sparse-reward environments. Of           Recent work in representation learning has its roots
+particular note is the strong performance in Mon-            in the broader feature selection problem in reinforce-
+tezuma’s Revenge. We expected reduced performance            ment learning. This problem has been extensively
+for DDQN+RC in the dense-reward games, but were              studied (Parr et al., 2008, 2007; Mahadevan and Mag-
+surprised to observe improved performance here as            gioni, 2007; Petrik, 2007; Mahadevan, 2009; Kroon and
+well. However, we do note the instability seen in            Whiteson, 2009; Fard et al., 2013; Jiang et al., 2015),
+Seaquest. Finally, Figure 5 shows the result of a            particularly in the linear value function approximation
+hyperparameter sweep over the number of auxiliary            setting. Parr et al. (2008) analyze power-iteration-
+task heads, revealing relevant di↵erences in the three       style feature learning methods, to which our analysis
+methods considered. Overall, we find that random cu-         of the convergence of features presents notable sim-
+mulants are a promising auxiliary task specifically in       ilarity. Also closely related is the notion of feature
+sparse-reward environments, and believe that this mo-        adaptation (Menache et al., 2005; Yu and Bertsekas,
+tivates further theoretical development to close the gap     2009; Di Castro and Mannor, 2010; Bhatnagar et al.,
+between the dynamics of representations in deep RL           2013; Prabuchandran et al., 2014, 2016; Barker and
+agents, and the settings studied above.                      Ras, 2019), in which features are adaptively updated
+                                                             simultaneously with the weights used for value func-
+                                                             tion approximation.
+6    Related work
+                                                             7   Conclusion
+As described previously, a wide variety of auxiliary
+tasks have been demonstrated to improve performance          We have introduced a framework based on learning
+in deep reinforcement learning (Sutton et al., 2011; An-     dynamics to analyse representations in reinforcement
+schel et al., 2017; Jaderberg et al., 2017b; Bellemare       learning. This led to a variety of theoretical results
+et al., 2017; Barreto et al., 2017; Mirowski et al., 2017;   concerning learning with and without the presence
+Du et al., 2018; Riedmiller et al., 2018; van den Oord       of auxiliary tasks, as well as several straightforward
+et al., 2018; Dabney et al., 2018; Gelada et al., 2019;      models for studying representation learning empiri-
+Fedus et al., 2019; Kartal et al., 2019; Lin et al., 2019;   cally. With this, we were able to thoroughly test a
+Stooke et al., 2020; Dabney et al., 2020; Guo et al.,        new hypothesis on the e↵ectiveness of particular aux-
+2020; Laskin et al., 2020). These works principally fo-      iliary tasks in sparse reward environments, which led
+cus on demonstrating the empirical benefits of these         to improved understanding of representation learning
+tasks on agent performance, leaving an analysis as to        in RL, as well as practical modifications to deep RL
+why these e↵ects occur to future work. Follow-up work        algorithms.
+on distributional reinforcement learning, for example,
+                                                             There are many natural follow-up directions to this
+has begun to close the theory-practice gap (Lyle et al.,
+                                                             work. One direction is to further develop the theory
+2019; Rowland et al., 2018). There is also a growing
+                                                             associated with the learning dynamics perspective, in
+body of work on understanding the impact of repre-
+                                                             order to (i) understand how additional types of aux-
+sentations on the sample efficiency of reinforcement
+                                                             iliary tasks, in particular auxiliary tasks that don’t
+learning; see for example Du et al. (2019); Van Roy
+                                                             correspond to value functions, a↵ect the representa-
+and Dong (2019); Lattimore et al. (2020).
+                                                             tions in the learning models developed in this paper,
+Further analysis of auxiliary tasks in deep reinforce-       (ii) extend the learning models themselves to incorpo-
+ment learning focuses on their e↵ect on the represen-        rate further aspects of large-scale learning scenarios,
+tation learned by the agent (Bellemare et al., 2019;         such as sample-based learning and state-visitation dis-
+Dabney et al., 2020) and its ability to approximate          tribution corrections, and (iii) investigate other com-
+the value functions of several policies. Additionally,       mon learning dynamics, such as gradient TD methods
+Ghosh and Bellemare (2020) propose an auxiliary task         (Sutton et al., 2008). There is also scope for further
+based on its e↵ect on the stability of learned represen-     empirical work to develop an understanding of which
+tations. Kumar et al. (2021) also study representation       auxiliary tasks are useful in certain types of environ-
+collapse in deep reinforcement learning, in the absence      ments, extending the observations relating to sparse-
+of auxiliary tasks. Aside from reinforcement learning,       reward environments and random cumulants in this
+there are also related empirical approaches using boot-      paper. We hope that the community will find this
+strapping to shape representations in self-supervised        framework useful for testing many more hypotheses in
+learning (Grill et al., 2020), and theoretical work in       a wide range of scenarios, ultimately leading to a bet-
+characterising the regularising e↵ect of self-distillation   ter understanding of how reinforcement learning and
+(Mobahi et al., 2020) and over-parametrisation (Arora        representation learning fit together.
+et al., 2019a; Li et al., 2018) in supervised learning.
+                      On The E↵ect of Auxiliary Tasks on Representation Dynamics
+
+
+Acknowledgements                                           Le Roux, Dale Schuurmans, Tor Lattimore, and
+                                                           Clare Lyle. A geometric perspective on optimal rep-
+We thank Diana Borsa for detailed feedback on a pre-       resentations for reinforcement learning. In Neural
+liminary version of this paper, and Kris Cao, Marc         Information Processing Systems (NeurIPS), 2019.
+Bellemare, and the wider DeepMind team for valuable      Dimitri P Bertsekas. Feature-based aggregation and
+discussions. We also thank the anonymous reviewers         deep reinforcement learning: A survey and some
+for useful comments during the review process. CL is       new implementations. IEEE/CAA Journal of Auto-
+funded by an Open Phil AI Fellowship.                      matica Sinica, 6(1):1–31, 2018.
+                                                         Dimitri P Bertsekas and John N Tsitsiklis. Neuro-
+References
+                                                           Dynamic Programming. Athena Scientific, 1st edi-
+Rishabh Agarwal, Dale Schuurmans, and Mohammad             tion, 1996.
+  Norouzi. An optimistic perspective on o✏ine rein-      Shalabh Bhatnagar,      Vivek S Borkar,         and
+  forcement learning. In International Conference on       KJ Prabuchandran. Feature search in the Grass-
+  Machine Learning (ICML), 2020.                           manian in online reinforcement learning. IEEE
+Oron Anschel, Nir Baram, and Nahum Shimkin.                Journal of Selected Topics in Signal Processing, 7
+  Averaged-DQN: Variance reduction and stabiliza-          (5):746–758, 2013.
+  tion for deep reinforcement learning. In Interna-      Justin A Boyan. Least-squares temporal di↵erence
+  tional Conference on Machine Learning (ICML),            learning. In ICML, pages 49–56. Citeseer, 1999.
+  2017.
+                                                         James Bradbury, Roy Frostig, Peter Hawkins,
+Sanjeev Arora, Nadav Cohen, Wei Hu, and Yuping             Matthew James Johnson, Chris Leary, Dougal
+  Luo. Implicit regularization in deep matrix factor-      Maclaurin, George Necula, Adam Paszke, Jake
+  ization. In Neural Information Processing Systems        VanderPlas, Skye Wanderman-Milne, and Qiao
+  (NeurIPS), 2019a.                                        Zhang.    JAX: composable transformations of
+Sanjeev Arora, Simon S Du, Wei Hu, Zhiyuan Li, and         Python+NumPy programs, 2018.
+  Ruosong Wang. Fine-grained analysis of optimiza-       Wesley Chung, Somjit Nath, Ajin Joseph, and Martha
+  tion and generalization for overparameterized two-      White. Two-timescale networks for nonlinear value
+  layer neural networks. In International Conference      function approximation. In International Confer-
+  on Machine Learning (ICML), 2019b.                      ence on Learning Representations (ICLR), 2018.
+Edward Barker and Charl Ras. Unsupervised ba-            Will Dabney, Mark Rowland, Marc G Bellemare, and
+  sis function adaptation for reinforcement learning.     Rémi Munos. Distributional reinforcement learning
+  Journal of Machine Learning Research, 20(128):1–        with quantile regression. In AAAI Conference on
+  73, 2019.                                               Artificial Intelligence, 2018.
+André Barreto, Will Dabney, Rémi Munos, Jonathan J     Will Dabney, André Barreto, Mark Rowland, Robert
+ Hunt, Tom Schaul, Hado van Hasselt, and David Sil-       Dadashi, John Quan, Marc G Bellemare, and David
+ ver. Successor features for transfer in reinforcement    Silver. The value-improvement path: Towards
+ learning. In Neural Information Processing Systems       better representations for reinforcement learning.
+ (NeurIPS), 2017.                                         arXiv, 2020.
+Bahram Behzadian and Marek Petrik. Feature selec-        Dotan Di Castro and Shie Mannor. Adaptive bases for
+  tion by singular value decomposition for reinforce-     reinforcement learning. In Joint European Confer-
+  ment learning. In ICML Prediction and Generative        ence on Machine Learning and Knowledge Discovery
+  Modeling Workshop, 2018.                                in Databases, pages 312–327. Springer, 2010.
+Marc G Bellemare, Yavar Naddaf, Joel Veness, and         Simon S Du, Sham M Kakade, Ruosong Wang, and
+ Michael Bowling. The Arcade Learning Environ-             Lin F Yang. Is a good representation sufficient
+ ment: An evaluation platform for general agents.          for sample efficient reinforcement learning? In In-
+ Journal of Artificial Intelligence Research, 47:253–      ternational Conference on Learning Representations
+ 279, 2013.                                                (ICLR), 2019.
+Marc G Bellemare, Will Dabney, and Rémi Munos. A        Yunshu Du, Wojciech M Czarnecki, Siddhant M
+ distributional perspective on reinforcement learning.     Jayakumar, Razvan Pascanu, and Balaji Lakshmi-
+ In International Conference on Machine Learning           narayanan. Adapting auxiliary losses using gradient
+ (ICML), 2017.                                             similarity. arXiv, 2018.
+Marc G Bellemare, Will Dabney, Robert Dadashi,           Mahdi Milani Fard, Yuri Grinberg, Amir-massoud
+ Adrien Ali Taı̈ga, Pablo Samuel Castro, Nicolas          Farahmand, Joelle Pineau, and Doina Precup. Bell-
+                       Clare Lyle*, Mark Rowland*, Georg Ostrovski, Will Dabney
+
+
+  man error based feature generation using random            on Artificial Intelligence and Interactive Digital En-
+  projections on sparse spaces. In Neural Information        tertainment, 2019.
+  Processing Systems (NIPS), 2013.                         Mark Kroon and Shimon Whiteson. Automatic feature
+William Fedus, Carles Gelada, Yoshua Bengio, Marc G         selection for model-based reinforcement learning in
+ Bellemare, and Hugo Larochelle.         Hyperbolic         factored MDPs. In 2009 International Conference
+ discounting and learning over multiple horizons.           on Machine Learning and Applications, pages 324–
+ In Reinforcement Learning and Decision Making              330. IEEE, 2009.
+ (RLDM), 2019.                                             Aviral Kumar, Rishabh Agarwal, Dibya Ghosh, and
+Carles Gelada, Saurabh Kumar, Jacob Buckman, Ofir           Sergey Levine. Implicit under-parameterization in-
+  Nachum, and Marc G Bellemare. DeepMDP: Learn-             hibits data-efficient deep reinforcement learning. In
+  ing continuous latent space models for representa-        International Conference on Learning Representa-
+  tion learning. In International Conference on Ma-         tions (ICLR), 2021.
+  chine Learning (ICML), 2019.                             Michael Laskin, Aravind Srinivas, and Pieter Abbeel.
+Dibya Ghosh and Marc G. Bellemare. Representations          CURL: Contrastive unsupervised representations
+  for stable o↵-policy reinforcement learning. In Inter-    for reinforcement learning. In International Con-
+  national Conference on Machine Learning (ICML),           ference on Machine Learning (ICML), 2020.
+  2020.                                                    Tor Lattimore, Csaba Szepesvari, and Gellert Weisz.
+                                                             Learning with good feature representations in ban-
+Jean-Bastien Grill, Florian Strub, Florent Altché,
+                                                             dits and in RL with a generative model. In Inter-
+  Corentin Tallec, Pierre H Richemond, Elena
+                                                             national Conference on Machine Learning (ICML),
+  Buchatskaya, Carl Doersch, Bernardo Avila Pires,
+                                                             2020.
+  Zhaohan Daniel Guo, Mohammad Gheshlaghi Azar,
+  Bilal Piot, Koray Kavukcuoglu, Rémi Munos, and          Nir Levine, Tom Zahavy, Daniel J Mankowitz, Aviv
+  Michal Valko. Bootstrap your own latent: A new             Tamar, and Shie Mannor. Shallow updates for deep
+  approach to self-supervised learning. arXiv, 2020.         reinforcement learning. In Neural Information Pro-
+                                                             cessing Systems (NeurIPS), 2017.
+Daniel Guo, Bernardo Avila Pires, Bilal Piot, Jean-
+ bastien Grill, Florent Altché, Rémi Munos, and          Yuanzhi Li, Tengyu Ma, and Hongyang Zhang. Algo-
+ Mohammad Gheshlaghi Azar. Bootstrap latent-                 rithmic regularization in over-parameterized matrix
+ predictive representations for multitask reinforce-         sensing and neural networks with quadratic activa-
+ ment learning. arXiv, 2020.                                 tions. In Conference On Learning Theory (COLT),
+                                                             2018.
+Tommi Jaakkola, Michael I. Jordan, and Satinder P
+                                                           Xingyu Lin, Harjatin Baweja, George Kantor, and
+  Singh. On the convergence of stochastic iterative
+                                                             David Held. Adaptive auxiliary task weighting for
+  dynamic programming algorithms. Neural Compu-
+                                                             reinforcement learning. In Neural Information Pro-
+  tation, 6(6), 1994.
+                                                             cessing Systems (NeurIPS), 2019.
+Max Jaderberg, Volodymyr Mnih, Wojciech Marian             Clare Lyle, Marc G Bellemare, and Pablo Samuel Cas-
+ Czarnecki, Tom Schaul, Joel Z Leibo, David Silver,          tro. A comparative analysis of expected and distri-
+ and Koray Kavukcuoglu. Reinforcement learning               butional reinforcement learning. In AAAI Confer-
+ with unsupervised auxiliary tasks. In International         ence on Artificial Intelligence, 2019.
+ Conference on Learning Representations (ICLR),
+ 2017a.                                                    Marios C Machado, Marc G Bellemare, and Michael
+                                                            Bowling. A Laplacian framework for option discov-
+Max Jaderberg, Volodymyr Mnih, Wojciech Marian              ery in reinforcement learning. In International Con-
+ Czarnecki, Tom Schaul, Joel Z Leibo, David Silver,         ference on Machine Learning (ICML), 2017.
+ and Koray Kavukcuoglu. Reinforcement learning
+                                                           Marlos C Machado, Marc G Bellemare, Erik Talvi-
+ with unsupervised auxiliary tasks. In International
+                                                            tie, Joel Veness, Matthew Hausknecht, and Michael
+ Conference on Learning Representations (ICLR),
+                                                            Bowling. Revisiting the Arcade Learning Environ-
+ 2017b.
+                                                            ment: Evaluation protocols and open problems for
+Nan Jiang, Alex Kulesza, and Satinder Singh. Ab-            general agents. Journal of Artificial Intelligence Re-
+  straction selection in model-based reinforcement          search, 61:523–562, 2018a.
+  learning. In International Conference on Machine         Marlos C Machado, Clemens Rosenbaum, Xiaoxiao
+  Learning (ICML), 2015.                                    Guo, Miao Liu, Gerald Tesauro, and Murray Camp-
+Bilal Kartal, Pablo Hernandez-Leal, and Matthew E           bell. Eigenoption discovery through the deep succes-
+  Taylor. Terminal prediction as an auxiliary task for      sor representation. In International Conference on
+  deep reinforcement learning. In AAAI Conference           Learning Representations (ICLR), 2018b.
+                       On The E↵ect of Auxiliary Tasks on Representation Dynamics
+
+
+Sridhar Mahadevan. Learning representation and con-         Marek Petrik. An analysis of Laplacian methods for
+  trol in Markov decision processes: New frontiers.          value function approximation in MDPs. In Inter-
+  Foundations and Trends R in Machine Learning, 1            national Joint Conference on Artificial Intelligence
+  (4):403–565, 2009.                                         (IJCAI), 2007.
+Sridhar Mahadevan and Mauro Maggioni. Proto-                KJ Prabuchandran, Shalabh Bhatnagar, and Vivek S
+  value functions: A Laplacian framework for learn-          Borkar. An actor critic algorithm based on Grass-
+  ing representation and control in Markov decision          manian search. In IEEE Conference on Decision
+  processes. Journal of Machine Learning Research, 8         and Control, 2014.
+  (Oct):2169–2231, 2007.                                    KJ Prabuchandran, Shalabh Bhatnagar, and Vivek S
+Ishai Menache, Shie Mannor, and Nahum Shimkin.               Borkar. Actor-critic algorithms with online fea-
+  Basis function adaptation in temporal di↵erence re-        ture adaptation. ACM Transactions on Modeling
+  inforcement learning. Annals of Operations Re-             and Computer Simulation (TOMACS), 26(4):1–26,
+  search, 134(1):215–238, 2005.                              2016.
+Piotr Mirowski, Razvan Pascanu, Fabio Viola, Hu-            John Quan and Georg Ostrovski. DQN Zoo: Reference
+  bert Soyer, Andrew J Ballard, Andrea Banino,                implementations of DQN-based agents, 2020.
+  Misha Denil, Ross Goroshin, Laurent Sifre, Koray          Martin Riedmiller, Roland Hafner, Thomas Lampe,
+  Kavukcuoglu, Dharshan Kumaran, and Raia Had-               Michael Neunert, Jonas Degrave, Tom Wiele, Vlad
+  sell. Learning to navigate in complex environments.        Mnih, Nicolas Heess, and Jost Tobias Springenberg.
+  In International Conference on Learning Represen-          Learning by playing - solving sparse reward tasks
+  tations (ICLR), 2017.                                      from scratch. In International Conference on Ma-
+                                                             chine Learning (ICML), 2018.
+Volodymyr Mnih, Koray Kavukcuoglu, David Silver,
+  Andrei A Rusu, Joel Veness, Marc G Bellemare,             Mark Rowland, Marc G Bellemare, Will Dabney, Rémi
+  Alex Graves, Martin Riedmiller, Andreas K Fidje-           Munos, and Yee Whye Teh. An analysis of categor-
+  land, Georg Ostrovski, Stig Petersen, Charles Beat-        ical distributional reinforcement learning. In Artifi-
+  tie, Amir Sadik, Ioannis Antonoglou, Helen King,           cial Intelligence and Statistics (AISTATS), 2018.
+  Dharshan Kumaran, Daan Wierstra, Shane Legg,              Kimberly L Stachenfeld, Matthew Botvinick, and
+  and Demis Hassabis. Human-level control through             Samuel J Gershman. Design principles of the hip-
+  deep reinforcement learning. Nature, 518(7540):529–         pocampal cognitive map. In Neural Information
+  533, 2015.                                                  Processing Systems (NIPS), 2014.
+Hossein Mobahi, Mehrdad Farajtabar, and Peter L             Adam Stooke, Kimin Lee, Pieter Abbeel, and Michael
+  Bartlett. Self-distillation amplifies regularization in    Laskin. Decoupling representation learning from re-
+  Hilbert space. In Neural Information Processing            inforcement learning. arXiv, 2020.
+  Systems (NeurIPS), 2020.
+                                                            Richard S Sutton, Csaba Szepesvári, and Hamid Reza
+Ian Osband, Charles Blundell, Alexander Pritzel, and          Maei. A convergent O(n) algorithm for o↵-policy
+  Benjamin Van Roy. Deep exploration via boot-                temporal-di↵erence learning with linear function ap-
+  strapped DQN. In Neural Information Processing              proximation. Neural Information Processing Sys-
+  Systems (NIPS), 2016.                                       tems (NIPS), 2008.
+Ian Osband, John Aslanides, and Albin Cassirer.             Richard S Sutton, Joseph Modayil, Michael Delp,
+  Randomized prior functions for deep reinforcement           Thomas Degris, Patrick M Pilarski, Adam White,
+  learning. In Neural Information Processing Systems          and Doina Precup. Horde: A scalable real-time ar-
+  (NeurIPS), 2018.                                            chitecture for learning knowledge from unsupervised
+                                                              sensorimotor interaction. In International Confer-
+Ronald Parr, Christopher Painter-Wakefield, Lihong
+                                                              ence on Autonomous Agents and Multiagent Sys-
+  Li, and Michael Littman. Analyzing feature gen-
+                                                              tems (AAMAS), 2011.
+  eration for value-function approximation. In Inter-
+  national Conference on Machine Learning (ICML),           John N Tsitsiklis. Asynchronous stochastic approx-
+  2007.                                                       imation and Q-learning. Machine learning, 16(3):
+                                                              185–202, 1994.
+Ronald Parr, Lihong Li, Gavin Taylor, Christopher
+  Painter-Wakefield, and Michael L Littman. An              Aäron van den Oord, Yazhe Li, and Oriol Vinyals.
+  analysis of linear models, linear value-function ap-        Representation learning with contrastive predictive
+  proximation, and feature selection for reinforcement        coding. arXiv, 2018.
+  learning. In International Conference on Machine          Hado Van Hasselt, Arthur Guez, and David Sil-
+  Learning (ICML), 2008.                                      ver. Deep reinforcement learning with double Q-
+                      Clare Lyle*, Mark Rowland*, Georg Ostrovski, Will Dabney
+
+
+  learning. In AAAI Conference on Artificial Intelli-
+  gence, 2016.
+Benjamin Van Roy and Shi Dong. Comments on the
+  Du-Kakade-Wang-Yang lower bounds. arXiv, 2019.
+Pauli Virtanen, Ralf Gommers, Travis E. Oliphant,
+  Matt Haberland, Tyler Reddy, David Courna-
+  peau, Evgeni Burovski, Pearu Peterson, Warren
+  Weckesser, Jonathan Bright, Stéfan J. van der Walt,
+  Matthew Brett, Joshua Wilson, K. Jarrod Millman,
+  Nikolay Mayorov, Andrew R. J. Nelson, Eric Jones,
+  Robert Kern, Eric Larson, C J Carey, İlhan Polat,
+  Yu Feng, Eric W. Moore, Jake VanderPlas, Denis
+  Laxalde, Josef Perktold, Robert Cimrman, Ian Hen-
+  riksen, E. A. Quintero, Charles R. Harris, Anne M.
+  Archibald, Antônio H. Ribeiro, Fabian Pedregosa,
+  Paul van Mulbregt, and SciPy 1.0 Contributors.
+  SciPy 1.0: Fundamental Algorithms for Scientific
+  Computing in Python. Nature Methods, 17:261–272,
+  2020.
+Christopher JCH Watkins and Peter Dayan. Q-
+  learning. Machine learning, 8(3-4):279–292, 1992.
+Ke Ye and Lek-Heng Lim. Schubert varieties and dis-
+  tances between subspaces of di↵erent dimensions.
+  SIAM Journal on Matrix Analysis and Applications,
+  37(3):1176–1197, 2016.
+Huizhen Yu and Dimitri P Bertsekas. Basis func-
+ tion adaptation methods for cost approximation in
+ MDP. In 2009 IEEE Symposium on Adaptive Dy-
+ namic Programming and Reinforcement Learning,
+ pages 74–81. IEEE, 2009.
+

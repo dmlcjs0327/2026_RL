@@ -1,0 +1,590 @@
+                                 The Thirty-Seventh AAAI Conference on Artificial Intelligence (AAAI-23)
+
+
+
+
+                              Value-Consistent Representation Learning for
+                                 Data-Efficient Reinforcement Learning
+                Yang Yue1,2 * , Bingyi Kang2 † , Zhongwen Xu2 , Gao Huang1 , Shuicheng Yan2
+                                     1
+                                Department of Automation, BNRist, Tsinghua University
+                                                     2
+                                                       Sea AI Lab
+                    yueyang22f@gmail.com, {kangby, xuzw, yansc}@sea.com, gaohuang@tsinghua.edu.cn
+
+
+                                                                                                  ball_in_cup-catch                                        walker-walk
+                            Abstract
+                                                                                  175                                                60
+                                                                                  150
+  Deep reinforcement learning (RL) algorithms suffer severe                                                                          50
+                                                                                  125
+
+
+
+
+                                                                            Q error
+  performance degradation when the interaction data are scarce,                   100                                                40
+                                                                                   75                                                30
+  which limits their real-world application. Recently, visual
+                                                                                   50
+                                                                                                                          ours
+  representation learning has been shown to be effective and                       25                                     SPR        20
+  promising for boosting sample efficiency in RL. These meth-                       0                                                10
+                                                                                          0       10        20       30   40    50
+  ods usually rely on contrastive learning and data augmentation                                       steps (1e4)                            0       10     20       30    40    50
+  to train a transition model for state prediction, which is dif-
+                                                                                                   battle_zone                                         crazy_climber
+  ferent from how the model is used in RL—performing value-                   1.2
+  based planning. Accordingly, the learned representation by                                                                         6
+                                                                              1.0
+  these visual methods may be good for recognition but not op-                0.8                                                    5
+  timal for estimating state value and solving the decision prob-             0.6                                                    4
+  lem. To address this issue, we propose a novel method, called               0.4
+  value-consistent representation learning (VCR), to learn rep-                                                                      3
+                                                                              0.2
+  resentations that are directly related to decision-making. More                                                                    2
+                                                                              0.0
+  specifically, VCR trains a model to predict the future state                        0       2   4     6        8   10 12 14             0       2    4    6     8    10   12   14
+  (also referred to as the “imagined state”) based on the cur-
+  rent one and a sequence of actions. Instead of aligning this              Figure 1: Q error of imagined states. Given a dataset of real
+  imagined state with a real state returned by the environment,
+                                                                            trajectories, we have a imagined state for each of the state
+  VCR applies a Q-value head on both states and obtains two
+  distributions of action values. Then a distance is computed               in the dataset by shooting forward for several steps with
+  and minimized to force the imagined state to produce a similar            the dynamic model. The curves represents the average error
+  action value prediction as that by the real state. We develop             between the value estimation from imagined states and the
+  two implementations of the above idea for the discrete and con-           ground-truth values along trajectories. The first row shows Q
+  tinuous action spaces respectively. We conduct experiments                errors of SPR (blue) and VCR (ours, green) on 2 DeepMind
+  on Atari 100K and DeepMind Control Suite benchmarks to                    Control environments. The second row shows Q error on
+  validate their effectiveness in improving sample efficiency. It           a subset of Atari 100K games. The shaded area represents
+  has been demonstrated that our methods achieve new state-of-              standard deviation. Details are described in Sec. 4.1.
+  the-art performance for search-free RL algorithms.
+
+
+                     1    Introduction                                      interaction due to the costly data collection process. To en-
+An important research direction in Deep Reinforcement                       able deep RL to go beyond virtual games and simulators,
+Learning (RL) is to improve data efficiency, which is much                  researchers explore the data efficiency issue from various
+demanded by the wide application of deep RL techniques in                   perspectives, including model-based RL (Hafner et al. 2019,
+real-world scenarios. With the state-of-the-art RL algorithms,              2020; Kaiser et al. 2020), auxiliary tasks (Jaderberg et al.
+simple tasks such as video games in Arcade Learning Envi-                   2016; Yarats et al. 2021; Laskin, Srinivas, and Abbeel 2020;
+ronment (Bellemare et al. 2013) require billions of frames to               Schwarzer et al. 2021), data augmentation (Yarats, Kostrikov,
+achieve human-level performance (Badia et al. 2020). In real-               and Fergus 2021; Laskin et al. 2020), etc. A majority of the
+world applications, such as robot controllers and self-driving              works borrow ideas from the wider deep learning community
+systems, it is impractical to obtain such a huge amount of                  to create additional training signals that accelerate the agent
+   * This work was done when Yang Yue was an intern at Sea AI
+                                                                            training process. Most of these techniques are not specifically
+                                                                            tailored for RL problems and some heavily rely on extracting
+Lab.
+   †                                                                        high-quality visual features.
+     Corresponding Author.
+Copyright © 2023, Association for the Advancement of Artificial                Recently, Self-Predictive Representation (SPR; Schwarzer
+Intelligence (www.aaai.org). All rights reserved.                           et al. 2021) introduces contrastive learning into transition
+
+
+                                                                    11069
+model learning. Specifically, SPR aims at learning an em-                                  2    Related Work
+bedding space in which the agent can predict future state               2.1   Data-Efficient Reinforcement Learning
+embeddings. Despite its effectiveness, it solely focuses on
+learning discriminative state features, ignoring the fact that          Reinforcement learning algorithms suffer severe performance
+some information in the raw pixels is unnecessary or even dis-          degradation when only a limited number of interactions are
+tracting for decision-making. This part of information would            available. Various methods are trying to tackle this prob-
+be encoded into representation by visual contrastive learning.          lem, by either model-based (Kaiser et al. 2020), model-
+Moreover, it is possible in practice that two visually similar          free (van Hasselt, Hessel, and Aslanides 2019; Kielak 2020;
+states result in significantly different returns. In other words,       Yarats, Kostrikov, and Fergus 2021), or non-parametric learn-
+the learned representation in this visual way might be good             ing (Long, Blair, and van Hoof 2022). For example, Sim-
+for recognition but not optimal for estimating state value              PLe (Kaiser et al. 2020) utilizes a world model learned with
+and solving the decision problem. For example, it’s common              collected data to generate imagined trajectories to train the
+in video games that state value highly depends on a very                agent. Later, Data-Efficient Rainbow (van Hasselt, Hessel,
+small number of pixels in a state (e.g., a high-reward trea-            and Aslanides 2019) and OTRainbow (Kielak 2020) show
+sure), while the predictive representation by SPR focus on              that Rainbow DQN with hyperparameter tuning can be a
+global visual features. As evidenced by Fig. 1, the predicted           strong baseline for the low-data regime by simply increasing
+values based on imagined states of SPR are consistently devi-           the number of steps in multi-step return and allowing more
+ated from the true values (by Monte-Carlo estimation) across            frequent parameter update.
+multiple environments.                                                     Recently, leveraging computer vision techniques is draw-
+   Similar observations have been made on the Value Equiv-              ing increasingly more attention from the community to boost
+alence (VE) principle (Grimm et al. 2020) for model-based               representation learning in RL. DrQ (Yarats, Kostrikov, and
+RL, which advocates that a model should be able to gener-               Fergus 2021) and rQdia (Lerman, Bi, and Xu 2021) makes a
+ate the same Bellman updates as the real environment rather             successful attempt by introducing image augmentation into
+than directly modeling state-to-state transitions. The success          RL tasks, while Yarats et al. (Yarats et al. 2021) use image
+of some state-of-the-art algorithms such as MuZero (Schrit-             reconstruction as an auxiliary loss function. Inspired by the
+twieser et al. 2020), Value Prediction Network (Oh, Singh,              remarkable success of contrastive learning for representation
+and Lee 2017), and Predictron (Silver et al. 2017) can be at-           learning (Chen et al. 2020; Grill et al. 2020), the contrastive
+tributed to this principle. However, value equivalence is only          loss has been integrated into RL as an effective component.
+studied with state value functions V (S), and is often coupled          For example, CURL (Laskin, Srinivas, and Abbeel 2020)
+with search-based algorithms, which makes it non-trivial to             forces different augmentations of the same state to produce
+apply VE for value-based RL.                                            similar embeddings and different states to generate dissimilar
+   In this paper, we develop a value-consistent metric for              embeddings, with the contrastive loss jointly optimized with
+action-values (i.e., Q-values) and propose a novel method               an RL loss.
+called Value-Consistent Representation Learning (VCR) to                   Recently, SPR (Schwarzer et al. 2021) and KSL (McIn-
+boost sample efficiency for action-value-based RL methods.              roe, Schäfer, and Albrecht 2021) make a sophisticated design
+In contrast to existing data-efficient RL ideas, VCR is based           by employing contrastive loss in transition model learning.
+on RL semantics other than losses constructed purely upon               In this way, an agent can learn representations that are pre-
+input states. Specifically, we introduce a dynamics model               dictable when the previous state and action are given. As a
+to predict the next states in a latent representation space             follow-up, PlayVirtual (Yu et al. 2021) introduces a back-
+induced by a state encoder. When a real trajectory from the             ward prediction model that enables the agent to imagine for-
+environment is provided, our dynamics model can roll out                ward and backward to form a cycle. Therefore, arbitrary ac-
+an imagined trajectory from the initial state by taking the             tions can be taken in imagination to compute cycle-consistent
+same sequence of actions. Then, for each of the real and                loss. EfficientZero (Ye et al. 2021) introduces SPR loss into
+imagined state pairs, we obtain two Q-value distributions               MuZero (Schrittwieser et al. 2020), achieving super-human
+(over all available actions). A value-consistent loss function          performance on the Atari 100K for the first time.
+is applied to align these two distributions. VCR can be viewed             These successes demonstrate that self-predictive represen-
+as a clean implementation of value equivalence with action-             tation learning is indeed a promising way to improve sample
+values so that it is highly extendable in a significant family          efficiency. We also choose to base our method on SPR. How-
+of RL algorithms. The idea is simple yet effective and it can           ever, these methods only focus on making accurate state
+be easily integrated into any value-based RL algorithm. We              predictions, ignoring that value prediction is key to decision-
+demonstrate the effectiveness of the idea with two concrete             making problems. In this work, we propose value-consistent
+implementations based on Rainbow DQN (Hessel et al. 2018)               representation learning and show its importance for decision-
+and Soft Actor-Critic (SAC) (Haarnoja et al. 2018).                     making.
+   We conduct experiments to validate the effectiveness of
+VCR on two benchmarks: Atari 100K (Kaiser et al. 2020)                  2.2   Value Equivalence Principle
+(discrete action) and DeepMind Control Suite (Tassa et al.              Some works in model-based RL have proposed a high-level
+2018) (continuous action). Despite its simplicity, the results          idea of learning the transition model in terms of the value
+show our method can boost sample efficiency significantly               space. Value-Aware Model Learning (VAML) (Farahmand,
+and achieve new state-of-the-art in search-free methods.                Barreto, and Nikovski 2017; Farahmand 2018) incorporates
+
+
+                                                                11070
+the knowledge of value function into optimization to learn                𝑠!            𝑠!"#                                     𝑠!"$
+the probabilistic transition model in model-based reinforce-                   Env                  Env        ···      Env
+ment learning. Grimm et al. (Grimm et al. 2020) come                                                                                  VCR Loss
+up with the value equivalence principle which forces the
+learned transition model to have the same Bellman operator
+                                                                                   z%!"#        " !"#
+                                                                                                Q                            z%!"$       " !"$
+                                                                                                                                         Q
+updates with the real environment conditioned on a set of
+                                                                                   𝑧̂!"#            𝑄$!"#                     𝑧̂!"$      𝑄$!"$
+value functions and policies. Empirically successful works               𝑧̂!
+like VPN (Oh, Singh, and Lee 2017), VIN (Tamar et al. 2016),                                                    ···
+                                                                               Model           Model                  Model
+and MuZero (Schrittwieser et al. 2020) can be viewed as the
+instances that follow the value equivalence principle. Self-
+consistent models and values (Farquhar et al. 2021) boost the            Figure 2: Pipeline of Value-Consistent Representation Learn-
+performance of Muesli agent (Hessel et al. 2021) by encour-              ing. The agent interacts with the environment to produce a
+aging a value function to satisfy the Bellman equation under             sequence of states {st+k }k=1:K . The sequence is encoded
+a learned transition model and a learned policy.                         into a latent embedding space, denoted as {z̃t+k }k=1:K . Then
+   Although based on similar motivation as the value equiva-             the parametric transition model predicts the sequence of la-
+lence principle, our core idea greatly differs from the above            tent states {ẑt+k }k=1:K conditioned on the start point ẑt and
+works. The above works lie in the category of planning-based             the action sequence, where ẑt is the latent embedding from
+RL and leverage value regularization or value equivalence to             st . Value-Consistent Representation Learning enforces the
+train a dynamics model for planning. However, our method,                value prediction from imagined states to be consistent with
+a search-free algorithm, harnesses value consistency to learn            the values of a real state from the environment. SPR loss is
+a transition model for better state representation. Besides,             also utilized to help stabilize the training at the early stage.
+our method employs the reward from the real environment                  For simplicity, SPR loss and action inputs to the environment
+to estimate the target value, while those planning algorithms            and the transition model are omitted in the figure.
+use predicted rewards with an extra reward predictor.
+
+                        3    Method                                      by utilizing neural networks to encode states and generate
+                                                                         Q values. Additionally, experience replay and a separated
+We are especially interested in RL in a low-data regime,                 target network are used to stabilize the training of DQN. The
+where only a limited number of interactions are allowed. In              overall objective for DQN is given by
+this section, we detail our value-consistent representation                                                                                 2 
+(VCR) learning method step by step. First, we prepare the                  J (θ) = E(s,a,s′ ,r)∼D
+                                                                                                                         ′   ′
+                                                                                                         r + γ max Qθ̄ (s , a ) − Qθ (s, a)          ,   (1)
+                                                                                                                a′
+readers with certain preliminaries required by VCR. Then, we
+introduce the intuition and the overall framework for VCR.                where Qθ is the Q network parameterized with θ, Qθ̄ is the
+In the end, we provide two implementations of VCR for both               target Q network, and D represents the replay buffer which
+discrete and continuous action settings.                                                                     (n)   Pn
+                                                                         stores the experience tuples. Let Ḡt = τ =1 γ τ −1 rt+τ +
+                                                                           n
+3.1   Preliminaries: Value-Based Reinforcement                           γ maxa Qθ̄ (st+n , a) be the n-step value target. Note that
+                                                                         when n = 1, it reduces to the estimator used in Eqn. (1), but
+      Learning                                                           n > 1 is also commonly used to get a better estimation (Sut-
+Reinforcement Learning (RL) addresses the problem of se-                 ton and Barto 2018; Hessel et al. 2018).
+quential decision-making, which is usually formulated with                  As the main goal of our work is to boost the sample effi-
+a Markov Decision Process (MDP). A typical MDP is rep-                   ciency of RL algorithms, without loss of generality, we build
+resented with a tuple ⟨S, A, T, r, γ⟩. Here S is a finite set of         our method upon two best-performing algorithm variants, i.e.,
+states; A is the action space; T (s, a, s′ ) = P (s′ |s, a) is the       Rainbow DQN for discrete action domains and Soft Actor-
+dynamics function describing the probability of transition-              Critic (SAC) for continuous action domains. For more details,
+ing from a state s to s′ after taking an action a; r(s, a, s′ )          please refer to the Appendix or their papers. The appendix
+and γ ∈ (0, 1] are the reward function and the discount fac-             can be found in the paper’s arXiv version. Though empir-
+tor respectively. The fundamental goal of RL is to learn an              ical results are only shown with these two algorithms, our
+agent maximizing  P∞  the discounted cumulative reward (i.e.,            method is general enough to be easily integrated into any
+                           τ
+return) Gt =         τ =0 γ rt+τ +1 at any time step t. The              other value-based RL algorithms.
+behavior of an agent is denoted by a policy π(a|s) map-
+ping from states to actions, while the action-value function             3.2   Value-Consistent Representation Learning
+Qπ (s, a) = Eπ [Gt |st = s, at = a] predicts the expected re-
+                                                                         Various methods have shown that representation learning
+turn if the agent takes an action a for state s at the time step
+                                                                         can boost the sample efficiency of RL. However, all these
+t, following the policy π.
+                                                                         methods approach the problem from a computer vision per-
+   There are various ways to learn the optimal policy π ∗ . In
+this paper, we focus on value-based RL algorithms that are               spective, i.e., encouraging similar states to generate similar
+rooted in Q-learning. Q-learning performs approximate dy-                embeddings and forcing different states to be discriminative.
+namic programming by following the Bellman equation (Sut-                Despite their effectiveness, visual recognition is not always
+ton and Barto 2018). Deep Q Network (DQN) (Mnih et al.                   directly related to decision-making. To alleviate this issue, we
+2015) scales Q-learning to large state (e.g., visual inputs)             base our method on the assumption (Schwarzer et al. 2021;
+
+
+                                                                 11071
+Yu et al. 2021) that a good representation for RL should be                  Overall Objective. At the early stage of training, the value
+able to predict the resulting state following a sequence of                  estimation is not accurate and therefore sole VCR may not
+actions. Instead of aligning the predictions in the embedding                provide good supervision signals for training the dynamics
+space, our key idea is the value prediction from an imagined                 model. SPR loss is introduced to help stabilize the training
+state should be consistent with the values of a real state from              of the dynamics model. Now, we are ready to present our
+the environment, as illustrated in Fig. 2. Thus, the method is               overall training objective as below:
+termed Value-Consistent Representation Learning (VCR).
+                                                                                 Ltotal (θ) = J (θ) + λSPR LSPR (θ) + λVCR LVCR (θ),             (5)
+State Prediction with Transition Model. Considering a
+one-step interaction between an agent and the environment:                   where θ denotes all the model parameters used for computing
+(st , at , st+1 ), st+1 can be determined by the transition T                the above loss function, and λSPR , λVCR are the hyperparam-
+in the underlying MDP, given (st , at ). Similar to SPR and                  eters to weight different losses. Specific values for hyperpa-
+PlayVirtual, we introduce a parametric transition model h(·, ·)              rameters are at the apped.
+to mimic the behavior of T in a latent embedding space.                      Value-Consistent Distance Metric. Here we develop our
+More specifically, a (convolutional) neural encoder f (·) is                 distance metric dVCR (·, ·) and provide two different imple-
+used to encode a pixel-based observation/state st into a la-                 mentations for both discrete action and continuous settings.
+tent representation zt = f (st ). Then h(·, ·) operates by                   It seems easy to come up with an idea for dVCR (·, ·). For
+ẑt+1 = h(zt , at ). As shown in Fig. 2, based on the cur-                   example, one can simply apply mean-squared loss to the
+rent latent state zt , following a sequence of future K actions              imagined q-values and    P the target q-values over all         possible
+at:t+K−1 , a sequence of state predictions ẑt+1:t+K is ob-                                        1                                    2
+                                                                             actions: dMSE = |A|         a∈A [Q(ẑt , a) − QT (z̃t , a)] . Actually,
+tained by applying h(·, ·) recursively:                                      this can not work through because the target action-value
+         ẑt = zt = f (st )                                                  Q(z̃t , at ) for the real action at keeps evolving as the training
+                                                               (2)           proceeds. Based on J (θ) in Eqn. (1), at each iteration, the Q
+    ẑt+k+1 = h(ẑt+k , at+k ),     k = 0, 1, . . . , K − 1.
+                                                                             value Q(z̃t , at ) (where z̃t = f (st )) for a real state-action pair
+The transition model h(·, ·) is usually optimized to mini-                   (st , at ) will be updated towards a n-step target estimation
+                                                                               (n)
+mize the prediction error between ẑt+1:t+K and z̃t+1:t+K , a                Ḡt . If we still use dMSE , it means that we are optimizing
+sequence of latent features extracted directly from the raw                  Q(zˆt , at ) towards a sub-optimal point. Based on the above
+observations / states with z̃t+k = fT (st+k ). For example,                  observation, we propose the following distance function:
+the self-predictive representations (SPR) (Schwarzer et al.
+2021) method utilizes a cosine similarity for prediction error,                                 1 X                             2
+                                                                                    dVCR =               Q(ẑt , a) − Q̄(z̃t , a) ,
+leading to the following objective:                                                            |A|
+                                                                                                   a∈A
+                                                                                                           (n)                                   (6)
+                    K               ⊤ 
+                                                                                                              Ḡ            if   a  =  a   ,
+                                                      
+                    X       ẑt+k            z̃t+k                                 where Q̄(z̃t , a) =           t                       t
+         LSPR = −                                       ,  (3)                                                QT (z̃t , a) if a ̸= at .
+                         ||ẑt+k ||2      ||z̃t+k ||2
+                    k=1
+                                                                             With above equations, we let the value prediction of a real
+where z̃ is often referred to as the target embedding and gen-               state-action pair (st , at ) align with a n-step target estimation
+erated from a target encoder fT (·), which is a stop-gradient                  (n)
+version of the online encoder f (·).                                         Ḡt , while other pairs align with the corresponding target
+                                                                             action-value QT (z̃t , a). To avoid the trivial solution prob-
+Value Consistency. Intuitively, for a good encoder and a                     lem(Grill et al. 2020), we stop the gradient of the target value
+reasonable transition model in RL algorithms, the predic-                    QT (z̃t , a). Additionally, the varying rewards introduced by
+tive representations should contain abundant information                       (n)
+                                                                             Ḡt also disqualify the constant output as a solution.
+such that precise value estimation can be made by feeding                       Discrete Action Implementation. For discrete actions, the
+the latent embedding into a value head. With a slight abuse                  Q network or head is implemented to directly generate |A|
+of notation, we denote the Q-value predictions by a value                    outputs representing the Q values for the corresponding ac-
+head for the embedding-action pair (zt , at ) as Q(zt , at ). For            tions. We can simply enumerate all of them to calculate
+simplicity, we use Q(zt , ·) to denote the action values from                                                                     (n)
+the embedding zt for all possible actions. In this way, the                  the above distance in Eqn. (6). The above Ḡt is given
+                                                                                   (n)       n
+                                                                             by Ḡt = τ =1 γ τ −1 rt+τ + γ n maxa Qθ̄ (st+n , a), which
+                                                                                           P
+value predictions for imagined states ẑt+1:t+K and target
+states z̃t+1:t+K can be written as {Q(ẑt+k , ·)}k=1:K and                   adopt the same form with n-step estimation of Q-learning
+{QT (z̃t+k , ·)}k=1:K respectively. Then our value-consistent                to mitigate possible gradient conflict in multi-task learn-
+representation learning loss is obtained by minimizing the                   ing(Sener and Koltun 2018; Yu et al. 2020; Jean, Firat, and
+distance between these two value predictions, described by:                  Johnson 2019). As our method is based on Rainbow, each
+                 K
+                                                                             value is divided into bins to build a distribution.
+                 X                                                              Continuous Action Implementation. For continuous ac-
+        LVCR =         dVCR (Q(ẑt+k , ·), QT (z̃t+k , ·)) ,   (4)           tions, the Q network has a different implementation, which
+                 k=1
+                                                                             usually takes both the state s and the action a and then
+where dVCR is a distance metric for action-values to be de-                  outputs a scalar as the Q value Q(s, a). Note that SAC is
+tailed below, and QT (z̃t+k , ·) is the target value prediction              chosen to be our baseline algorithm, in which the target
+generated with a target head QT .                                            Q value is estimated by one-step return. For the case that
+
+
+                                                                     11072
+                                         (n)
+action a is real action at , the above Ḡt is calculated by              choose Atari 100K for discrete control and DeepMind Con-
+  (n)
+Ḡt = rt + γQϕtarg (st+1 , aθ (st+1 )). We randomly sam-                 trol Suite for continuous control. For DeepMind Control
+ple a few actions as actions that are not equal to at , which            Suite, following Hafner et al. (2019) and Yarats, Kostrikov,
+together with at constitute the set A. Considering soft Q                and Fergus (2021), we use six environments (i.e., ball-in-
+values are used in SAC, we also employ soft q values when                cup, finger-spin, reacher-easy, cheetah-run, walker-walk, and
+calculating the value-consistent loss.                                   cartpole-swingup) for benchmarking with 100K and 500K
+                                                                         environment steps.
+                     4   Experiments                                     Baselines. For Atari 100K, we take SPR as a strong base-
+In this section, we first investigate the quality of dynamic             line. Also, SimPLe (Chen et al. 2020), DER (van Has-
+models given by SPR in terms of value estimation, and show               selt, Hessel, and Aslanides 2019), OTR (Kielak 2020),
+that VCR is able to improve it substantially. Further, we                CURL (Laskin, Srinivas, and Abbeel 2020), DrQ (Yarats,
+empirically evaluate the performance of our VCR on boosting              Kostrikov, and Fergus 2021) are chosen as baselines because
+data efficiency in Atari 100K (Bellemare et al. 2013; Kaiser             all of them were state-of-the-arts in Atari 100K at their pub-
+et al. 2020) and DeepMind Control Suite (Tassa et al. 2018).             lications. PlayVirtual (Yu et al. 2021) is chosen as another
+We then conduct ablation studies to analyze the important                state-of-the-art baseline, which is also a representation learn-
+components in our method.                                                ing method based on SPR requiring a little more computa-
+                                                                         tion and memory. For DeepMind Control Suite, we choose
+                                                                         Dreamer (Hafner et al. 2020), SAC+AE (Yarats et al. 2021),
+4.1     Value of Imagined States
+                                                                         SLAC (Lee et al. 2020), CURL, DrQ, SPR and PlayVirtual
+Intuitively, it’s a good property for a reasonable encoder and           as our baselines. Since SPR is designed for discrete tasks, we
+transition model that the predicted representations contain              adopt a modified SPR based on SAC for continuous tasks1 .
+abundant information such that precise value estimation can              EfficientZero (Ye et al. 2021), a method based on Monte-
+be made. We measure the absolute difference between the                  Carlo Tree Search, has achieved excellent performance on
+values of imagined state ẑt+k and true values, where ẑt+k is           both Atari 100K and DeepMind Control 100K. However,
+given by Eqn. 2. Here we use the Monte-Carlo return as the               considering the success comes at the cost of one order of
+true value. For a complete evaluation trajectory of length T ,           magnitude more GPU and CPU computation complexity, we
+the average error is as:                                                 do not compare with EfficientZero here.
+
+       1 XX
+           T   K                                                         Implementation Details. For discrete action tasks, we base
+              Q(ẑt+k , at+k ) − Gt+k · 1(t+k≤T ) .        (7)           our implementation of VCR on the official code2 of SPR.
+      T K t=1                                                            For Q head, noisy parameters (Fortunato et al. 2018) are
+               k=1
+                                                                         reserved because we verify that the noisy q-value output does
+The timesteps that go beyond the terminal timestep are                   not have any negative influence on Value-Consistent repre-
+masked. Out of implementation efficiency, we collect evalu-              sentation learning (see the appendix). Different from SPR
+ation trajectories of a total length of 1000 and test the error          which has an asymmetric prediction head at the end of the
+every 1000 train steps. In finite-horizon Atari games, Gt+k is           online encoding branch, we validate that the removal of the
+calculated as the discounted return. DeepMind Control Suite              prediction head would not impair the performance (see the
+environments are infinite control problems with time limit               appendix). Thus we directly build q head following the encod-
+L = 1000, so Gt+k is derived by L − t − k step bootstrap                 ing branch. The prediction step is set K = 5. Q-learning loss
+of Q(sL , aθ (sL )). For a fair comparison, we set prediction            and Value-Consistent loss are optimized jointly by an Adam
+step K for SPR and VCR to be the same (K = 5 for Atari                   Optimizer (Kingma and Ba 2015), where the batch size is 32.
+100K, and K = 3 for DeepMind Control Suite).                             For continuous control tasks, the modified SPR for continu-
+   Fig. 1 compares the average and shows the results in a                ous control is chosen as our codebase. The prediction step is
+subset of Atari 100K and DeepMind Control Suite. For most                set K = 3. Actor loss, critic loss, and Value-Consistent loss
+curves of SPR, as the policy immediately achieves high re-               are optimized separately by three Adam optimizers, where
+turns at the beginning steps, the Q error of SPR grows rapidly           the batch size for the actor-critic update is 512 and the batch
+and then keeps high until the end. Instead, VCR consistently             size for VCR update is 128. For more details, please refer to
+reduces Q-error in all 6 tasks of DeepMind Control (only                 the appendix. Code will be open-sourced upon acceptance.
+show part of results in the figure). VCR achieves an average
+of 36% reduction in 16 out of Atari games, and comparable Q-             Evaluation Metrics. According to Agarwal et al. (2021),
+error in other games. Note that we are using a high-variance             we choose interquartile mean (IQM) and optimality gap as
+Monte-Carlo return estimator. The variance may dominate                  main evaluation indicator considering their good properties.
+the result. If we replace it with a low-variance N-step re-              IQM computes the mean Human Normalized Score (HNS) of
+turn, Q-error is reduced in all Atari games as shown in the              the middle 50% runs over all games and seeds. The optimality
+appendix. This clearly illustrates the effectiveness of VCR.             gap denotes the gap between algorithms and the target per-
+                                                                         formance. Higher IQM and lower optimality gap are better.
+4.2     Setup for Empirical Evaluation                                   We also present performance profile curves. On Atari-100K
+                                                                            1
+Environments. We benchmark VCR in environments                                  Link: https://github.com/microsoft/Playvirtual, MIT License.
+                                                                            2
+where the number of interactions is limited. Specifically, we                   Link: https://github.com/mila-iqia/spr, MIT License.
+
+
+                                                                 11073
+                        IQM                Optimality Gap
+       VCR
+       SPR
+       DrQ
+      CURL
+ OTRainbow
+       DER
+    SimPLe
+            0.1   0.2     0.3  0.4     0.56 0.64 0.72 0.80
+                        Human Normalized Score
+
+
+Figure 3: Aggregate IQM and optimality gap of methods.
+Higher IQM and lower optimality gap are better. The shaded
+bar shows 95% stratified bootstrap confidence intervals (Agar-
+wal et al. 2021). VCR runs 10 seeds over 26 games.
+                                                                       Figure 4: Performance profiles based on score distributions
+                                                                       with linear and non-linear scaling on Atari 100K.
+and DeepMind Control, we use 10 seeds for each game to
+evaluate VCR. More explanation about the metrics can be
+seen at the appendix.                                                  loss to the imagined q-values and the target q-values over real
+                                                                       state-action pairs: dMSE = [Q(ẑt , at ) − QT (z̃t , at )]2 . Further,
+4.3   Results of Empirical Evaluation                                  we can enforce Pvalue consistency over all 2possible actions:
+                                                                                    1
+Atari-100K. As shown in Fig. 3, VCR achieves the best                  dMSE-A = |A|      a∈A [Q(ẑt , a) − QT (z̃t , a)] . Note that MSE
+performance on both IQM HNS and optimality gap. It can                 loss is replaced with a cross-entropy for distributional RL.
+be seen from the nonoverlapping confidence intervals that                 We evaluate these two variants on Atari 100K. dMSE
+our improvement over SPR is statistically significant. Fig. 4          achieves 30.9% IQM HNS and 60% optimality gap, while
+reveals that VCR is nearly above baselines along the whole             dMSE-A achieves 34.0% IQM HNS and 57.9% optimality gap.
+axis, demonstrating consistent improvement over baselines.             Compared to dVCR (39.7% IQM HNS and 54.4% optimal-
+The improvement is particularly noteworthy when focusing               ity gap), two variants dMSE and dMSE-A have inferior perfor-
+on the HNS interval between 0.2 and 1.0. The numerical per-            mance. Especially for dMSE , it is lower than the baseline
+formance of methods is presented in Table 1. By adding value           (33.7% IQM HNS and 57.7% optimality gap). That may be
+consistency constraint, our method gets a boost over the base-         because, in these two variants, VCR loss has conflicting gra-
+line SPR by 6.0% IQM HNS, which is significant when con-               dients with policy learning loss (i.e., DQN loss), a common
+sidering the 5.7% IQM HNS improvement of SPR over DrQ                  issue in multi-task learning (Sener and Koltun 2018; Yu et al.
+and 3.7% of PlayVirtual over SPR. Compared to PlayVirtual,             2020; Jean, Firat, and Johnson 2019). Q-learning loss pushes
+the other regularization method based on SPR architecture              the value function towards the value distribution under the
+by producing virtual cycle trajectories, VCR achieves better           optimal policy while dMSE and dMSE-A aim to align with the
+performance (higher IQM HNS by 2.3%) with less computa-                current value approximation. Intuitively, dMSE has bigger con-
+tion and memory consumption (See the appendix). All scores             flict than dMSE-A because only real state-action pairs lead to
+of individual games are shown in the appendix.                         an explicit conflict, which are only 1/|A| of state-action pairs
+                                                                       used in dMSE-A , where |A| is the size of the action set. It may
+DeepMind Control Suite. Within very limited interactions               explain why dMSE has a larger drop in performance.
+100K, VCR achieves the best performance on 3 out of 6 tasks,
+as shown in Table 2. In addition, VCR achieves the best IQM            Comparison with Reward Loss. One may simply attribute
+HNS and optimality gap. Compared with the baseline SPR,                the improvement of VCR to the introduction of reward to
+VCR has a relatively 6.4% higher IQM and 15.5% lower                                                  (n)
+                                                                       representation learning in Ḡt . Here, we construct a base-
+optimality gap. When 500K ineractions are allowed, VCR is              line by adding reward prediction based on SPR, where the
+close to the perfect score in 4 environments, and achieves a           dynamics model outputs predicted reward and next state con-
+comparable median score with DrQ, SPR and PlayVirtual.                 ditioned on the current state and action. The predicted reward
+                                                                       is supervised by a real reward. We denote this baseline as
+4.4   Analysis                                                         SPR with reward loss, which achieves 35.4% IQM HNS and
+In this section, we conduct ablation studies with Atari 100K           56.8% optimality gap. We see that although SPR with reward
+to analyze the important components in VCR and the effec-              achieves a little higher IQM HNS than baseline, it is still
+tiveness of VCR compared with other auxiliary losses.                  far behind VCR. This implies that the effectiveness of our
+                                                                       method should be attributed to consistent value prediction
+Value-Consistent Distance Metric. We find that the Value-
+                                                                       rather than involving additional reward prediction.
+Consistent distance metric has a great influence on the per-
+formance. We use a mixed target of n-step target estima-               Comparison with Policy Learning Loss. Value-
+       (n)
+tion Ḡt and action-value QT (z̃t , a), i.e., dVCR (see Eqn. 6).       Consistent loss and policy learning loss are similar in terms
+Here, we test two variants to validate the proposed Value-             of the formula form, both of which leverage Q-values to
+Consistent distance metric. The first is to simply apply MSE           update the encoder and Q-value head. For example, in
+
+
+                                                               11074
+              Game                  SimPLe      DER       OTR       CURL      DrQ     SPR        VCR     PlayVirtual†
+              IQM HNS (%)              13.0      18.3      11.7      11.3     28.0      33.7      39.7        37.4
+              Optimality Gap (%)       72.9      69.8      81.9      76.8     63.1      57.7      54.4        55.8
+
+        Table 1: Aggregated scores achieved by different methods on Atari-100k. † denotes using virtual trajectories.
+
+  100k Step Scores     Dreamer     SAC+AE         SLAC         CURL            DrQ           SPR           VCR       PlayVirtual†
+  Finger, spin          341 ± 70   740 ± 64     693 ± 141     767 ± 56      901 ± 104     840 ± 143      795 ± 157    683 ± 189
+  Cartpole, swingup     326 ± 27   311 ± 11          -        582 ± 146     759 ± 92       815 ± 48       815 ± 47     812 ± 66
+  Reacher, easy        314 ± 155   274 ± 14          -        538 ± 233     601 ± 213     684 ± 186      763 ± 112    663 ± 214
+  Cheetah, run         235 ± 137   267 ± 24      319 ± 56     299 ± 48       361 ± 67     452 ± 117       422 ± 54     510 ± 38
+  Walker, walk          277 ± 12   394 ± 22      361 ± 73     403 ± 24      634 ± 160     397 ± 220      650 ± 143    499 ± 161
+  Ball in cup, catch   246 ± 174   391 ± 82     512 ± 110     769 ± 43       914 ± 51     807 ± 165       858 ± 85     939± 20
+  IQM HNS                 -            -            -              -           731             700         745           690
+  Optimality Gap         710          603           -             440          305             335         283           316
+  500k Step Scores
+  Finger, spin         796 ± 183   884 ± 128    673 ± 92        926 ± 45    938 ± 103     924 ± 132      972 ± 25     963 ± 40
+  Cartpole, swingup     762 ± 27    735 ± 63        -           841 ± 45    868 ± 10       870 ± 12      854 ± 26     865 ± 11
+  Reacher, easy        793 ± 164    627 ± 58        -           929 ± 44     942 ± 71      925 ± 79      938 ± 37     942 ± 66
+  Cheetah, run         570 ± 253    550 ± 34    640 ± 19        518 ± 28    660 ± 96       716 ± 47      661 ± 32     719 ± 51
+  Walker, walk          897 ± 49    847 ± 48    842 ± 51        902 ± 43    921 ± 45       916 ± 75      930 ± 18     928 ± 30
+  Ball in cup, catch   879 ± 87     794 ± 58    852 ± 71        959 ± 27     963 ± 9       963 ± 8       958 ± 4       967 ± 5
+  Median Score           794.5       764.5        757.5           914.0       929.5            920.0       934.0        935.0
+
+Table 2: Scores (mean and standard deviation) achieved by different methods on the DeepMind Control. We run VCR with 10
+seeds. On 500K steps, single run scores of SPR and PlayVirtual are missing to calculate IQM, so we follow Yu et al. (2021) to
+report median scores to profile the overall performance. † denotes using virtual trajectories.
+
+
+the discrete setting, both LVCR and LDQN align predicted              imagination of future states from its behaviors and obtain-
+Q-values to n-step estimation, while LVCR is computed over            ing correct value predictions based on the imagined states.
+K times of state-action pairs, where K is prediction steps.           The property becomes more demanding when the environ-
+Thus a possible concern is that the boost of our method               ment is stochastic and learning a precise transition model is
+comes from more state-action pairs to update the Q-value              impossible. Some previous works have validated the effec-
+head. Here we replace LVCR on imagined state-action pairs             tiveness of this idea with search-based methods. We develop
+with LDQN , equivalent to increasing the mini-batch size              a value-consistent metric for Q values and introduce it into
+of LDQN . SPR-L achieves 27.2% IQM HNS and 61.5%                      value-based RL algorithms for the first time. We further show
+optimality gap, while SPR-XL achieves 17.6% IQM HNS                   that the method is compatible with any value-based meth-
+and 70.1% optimality gap. Two variants display performance            ods by providing two implementations dealing with both
+drop, which implies VCR helps train the Q-value head but              discrete and continuous actions. We evaluate our method on
+the main gain comes from its regularization on representation         two benchmarks including Atari 100K for discrete control
+learning of the encoder and transition model.                         and DeepMind Control 100K for continuous control. The
+                                                                      results clearly show that VCR can improve sample efficiency
+Influence of Prediction Steps K. We increase the number               significantly and achieve new state-of-the-arts on both tasks.
+of prediction steps from 5 to 9 to test if more improvement           However, there are still some limitations to our method. In
+can be obtained. K = 9 achieves 39.7% IQM HNS and                     RL, except jointly optimizing network with RL loss, represen-
+54.3% optimality gap, which is roughly comparable to K =              tation learning can also be used to pre-train the encoder (Lee
+5. That means increasing prediction steps in a range would            et al. 2020). Considering VCR relies on value estimation,
+not change the overall performance although the performance           VCR may need a proxy value network or work with value-
+on a subset of games increases much (see the appendix), at            based offline RL methods to enable pre-training. Besides, we
+the cost of more computation and memory.                              derive the value-consistent distance metric by simply employ-
+                                                                      ing MSE, which might not be robust enough. We leave these
+          5    Conclusion and Limitation                              investigations as future work.
+To boost the sample efficiency of value-based reinforcement
+learning algorithms, we propose a novel Value-Consistent
+Representation Learning (VCR) method. The intuition be-
+hind VCR is that an agent should be capable of making an
+
+
+                                                              11075
+                         References                                      Kaiser, L.; Babaeizadeh, M.; Miłos, P.; Osiński, B.; Campbell,
+Agarwal, R.; Schwarzer, M.; Castro, P. S.; Courville, A. C.;             R. H.; Czechowski, K.; Erhan, D.; Finn, C.; Kozakowski,
+and Bellemare, M. 2021. Deep reinforcement learning at the               P.; Levine, S.; Mohiuddin, A.; Sepassi, R.; Tucker, G.; and
+edge of the statistical precipice. NeurIPS.                              Michalewski, H. 2020. Model Based Reinforcement Learning
+                                                                         for Atari. In ICLR.
+Badia, A. P.; Piot, B.; Kapturowski, S.; Sprechmann, P.;
+Vitvitskyi, A.; Guo, Z. D.; and Blundell, C. 2020. Agent57:              Kielak, K. P. 2020. Do recent advancements in model-based
+Outperforming the Atari human benchmark. In ICML.                        deep reinforcement learning really improve data efficiency?
+Bellemare, M. G.; Naddaf, Y.; Veness, J.; and Bowling, M.                Kingma, D. P.; and Ba, J. 2015. Adam: A method for stochas-
+2013. The arcade learning environment: An evaluation plat-               tic optimization. In ICLR.
+form for general agents. Journal of Artificial Intelligence              Laskin, M.; Lee, K.; Stooke, A.; Pinto, L.; Abbeel, P.; and
+Research, 47: 253–279.                                                   Srinivas, A. 2020. Reinforcement learning with augmented
+Chen, T.; Kornblith, S.; Norouzi, M.; and Hinton, G. 2020.               data. NeurIPS.
+A simple framework for contrastive learning of visual repre-             Laskin, M.; Srinivas, A.; and Abbeel, P. 2020. Curl: Con-
+sentations. In ICML.                                                     trastive unsupervised representations for reinforcement learn-
+Farahmand, A.-m. 2018. Iterative value-aware model learn-                ing. In ICML.
+ing. NeurIPS.                                                            Lee, A. X.; Nagabandi, A.; Abbeel, P.; and Levine, S. 2020.
+Farahmand, A.-m.; Barreto, A.; and Nikovski, D. 2017.                    Stochastic latent actor-critic: Deep reinforcement learning
+Value-aware loss function for model-based reinforcement                  with a latent variable model. NeurIPS.
+learning. In Artificial Intelligence and Statistics.                     Lerman, S.; Bi, J.; and Xu, C. 2021. rQdia: Regularizing Q-
+Farquhar, G.; Baumli, K.; Marinho, Z.; Filos, A.; Hessel,                Value Distributions With Image Augmentation. OpenReview.
+M.; van Hasselt, H. P.; and Silver, D. 2021. Self-Consistent             Long, A.; Blair, A.; and van Hoof, H. 2022. Fast and
+Models and Values. NeurIPS.                                              Data Efficient Reinforcement Learning from Pixels via Non-
+Fortunato, M.; Azar, M. G.; Piot, B.; Menick, J.; Osband, I.;            Parametric Value Approximation. AAAI.
+Graves, A.; Mnih, V.; Munos, R.; Hassabis, D.; Pietquin, O.;             McInroe, T.; Schäfer, L.; and Albrecht, S. V. 2021. Learning
+et al. 2018. Noisy networks for exploration. In ICLR.                    Temporally-Consistent Representations for Data-Efficient
+Grill, J.-B.; Strub, F.; Altché, F.; Tallec, C.; Richemond,              Reinforcement Learning. arXiv preprint arXiv:2110.04935.
+P.; Buchatskaya, E.; Doersch, C.; Avila Pires, B.; Guo, Z.;
+                                                                         Mnih, V.; Kavukcuoglu, K.; Silver, D.; Rusu, A. A.; Veness,
+Gheshlaghi Azar, M.; et al. 2020. Bootstrap your own latent-a
+                                                                         J.; Bellemare, M. G.; Graves, A.; Riedmiller, M.; Fidjeland,
+new approach to self-supervised learning. NeurIPS.
+                                                                         A. K.; Ostrovski, G.; et al. 2015. Human-level control through
+Grimm, C.; Barreto, A.; Singh, S.; and Silver, D. 2020. The              deep reinforcement learning. Nature, 518(7540): 529–533.
+value equivalence principle for model-based reinforcement
+learning. NeurIPS.                                                       Oh, J.; Singh, S.; and Lee, H. 2017. Value prediction network.
+                                                                         NeurIPS.
+Haarnoja, T.; Zhou, A.; Hartikainen, K.; Tucker, G.; Ha, S.;
+Tan, J.; Kumar, V.; Zhu, H.; Gupta, A.; Abbeel, P.; et al. 2018.         Schrittwieser, J.; Antonoglou, I.; Hubert, T.; Simonyan, K.;
+Soft actor-critic algorithms and applications. arXiv preprint            Sifre, L.; Schmitt, S.; Guez, A.; Lockhart, E.; Hassabis, D.;
+arXiv:1812.05905.                                                        Graepel, T.; et al. 2020. Mastering atari, go, chess and shogi
+                                                                         by planning with a learned model. Nature, 588(7839): 604–
+Hafner, D.; Lillicrap, T.; Ba, J.; and Norouzi, M. 2020. Dream           609.
+to Control: Learning Behaviors by Latent Imagination. In
+ICLR.                                                                    Schwarzer, M.; Anand, A.; Goel, R.; Hjelm, R. D.; Courville,
+                                                                         A.; and Bachman, P. 2021. Data-Efficient Reinforcement
+Hafner, D.; Lillicrap, T.; Fischer, I.; Villegas, R.; Ha, D.; Lee,       Learning with Self-Predictive Representations. In ICLR.
+H.; and Davidson, J. 2019. Learning latent dynamics for
+planning from pixels. In ICML.                                           Sener, O.; and Koltun, V. 2018. Multi-task learning as multi-
+                                                                         objective optimization. NeurIPS.
+Hessel, M.; Danihelka, I.; Viola, F.; Guez, A.; Schmitt, S.;
+Sifre, L.; Weber, T.; Silver, D.; and Van Hasselt, H. 2021.              Silver, D.; Hasselt, H.; Hessel, M.; Schaul, T.; Guez, A.;
+Muesli: Combining improvements in policy optimization. In                Harley, T.; Dulac-Arnold, G.; Reichert, D.; Rabinowitz, N.;
+ICML.                                                                    Barreto, A.; et al. 2017. The Predictron: End-to-end learning
+Hessel, M.; Modayil, J.; Van Hasselt, H.; Schaul, T.; Ostro-             and planning. In ICML.
+vski, G.; Dabney, W.; Horgan, D.; Piot, B.; Azar, M.; and                Sutton, R. S.; and Barto, A. G. 2018. Reinforcement learning:
+Silver, D. 2018. Rainbow: Combining improvements in deep                 An introduction. MIT press.
+reinforcement learning. In AAAI.                                         Tamar, A.; Wu, Y.; Thomas, G.; Levine, S.; and Abbeel, P.
+Jaderberg, M.; Mnih, V.; Czarnecki, W. M.; Schaul, T.; Leibo,            2016. Value iteration networks. NeurIPS.
+J. Z.; Silver, D.; and Kavukcuoglu, K. 2016. Reinforcement               Tassa, Y.; Doron, Y.; Muldal, A.; Erez, T.; Li, Y.; Casas, D.
+learning with unsupervised auxiliary tasks. In ICLR.                     d. L.; Budden, D.; Abdolmaleki, A.; Merel, J.; Lefrancq,
+Jean, S.; Firat, O.; and Johnson, M. 2019. Adaptive schedul-             A.; et al. 2018. DeepMind control suite. arXiv preprint
+ing for multi-task learning. arXiv preprint arXiv:1909.06434.            arXiv:1801.00690.
+
+
+                                                                 11076
+van Hasselt, H. P.; Hessel, M.; and Aslanides, J. 2019.
+When to use parametric models in reinforcement learning?
+NeurIPS.
+Yarats, D.; Kostrikov, I.; and Fergus, R. 2021. Image Aug-
+mentation Is All You Need: Regularizing Deep Reinforce-
+ment Learning from Pixels. In ICLR.
+Yarats, D.; Zhang, A.; Kostrikov, I.; Amos, B.; Pineau, J.; and
+Fergus, R. 2021. Improving sample efficiency in model-free
+reinforcement learning from images. AAAI.
+Ye, W.; Liu, S.; Kurutach, T.; Abbeel, P.; and Gao, Y. 2021.
+Mastering atari games with limited data. NeurIPS.
+Yu, T.; Kumar, S.; Gupta, A.; Levine, S.; Hausman, K.; and
+Finn, C. 2020. Gradient surgery for multi-task learning.
+NeurIPS.
+Yu, T.; Lan, C.; Zeng, W.; Feng, M.; Zhang, Z.; and Chen,
+Z. 2021. Playvirtual: Augmenting cycle-consistent virtual
+trajectories for reinforcement learning. NeurIPS.
+
+
+
+
+                                                              11077
+

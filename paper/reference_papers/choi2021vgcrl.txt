@@ -1,0 +1,518 @@
+                     Variational Empowerment as Representation Learning
+                            for Goal-Based Reinforcement Learning
+
+
+            Jongwook Choi † 1 Archit Sharma † 2 Honglak Lee 1 3 Sergey Levine 4 5 Shixiang Shane Gu 4
+
+
+                          Abstract                                   1   Introduction
+      Learning to reach goal states and learning diverse
+                                                                     Reinforcement learning (RL) provides a general framework
+      skills through mutual information (MI) maximiza-
+                                                                     for discovering optimal behaviors for sequential decision-
+      tion have been proposed as principled frameworks
+                                                                     making. Combined with powerful function approximators
+      for self-supervised reinforcement learning, allow-
+                                                                     like neural networks, RL can be used to learn to play com-
+      ing agents to acquire broadly applicable multi-
+                                                                     puter games from raw pixels (Mnih et al., 2013) and acquire
+      task policies with minimal reward engineering.
+                                                                     complex sensorimotor skills with real-world robots (Gu
+      Starting from a simple observation that the stan-
+                                                                     et al., 2017a; Kalashnikov et al., 2018; Haarnoja et al.,
+      dard goal-conditioned RL (GCRL) is encapsu-
+                                                                     2018). Neural networks show best performance, gener-
+      lated by the optimization objective of variational
+                                                                     alization, and reusability when they are trained on large
+      empowerment, we discuss how GCRL and MI-
+                                                                     and diverse datasets (Krizhevsky et al., 2012; Devlin et al.,
+      based RL can be generalized into a single family
+                                                                     2018). However, a critical limitation in RL is that human
+      of methods, which we name variational GCRL
+                                                                     experts often need to spend considerable efforts designing
+      (VGCRL), interpreting variational MI maximiza-
+                                                                     and fine-tuning reward functions per task, making it hard
+      tion, or variational empowerment, as representa-
+                                                                     to scale and define a huge set of tasks in advance. If we
+      tion learning methods that acquire functionally-
+                                                                     have agents that can interact with the world without rewards,
+      aware state representations for goal reaching. This
+                                                                     build up a body of knowledge autonomously, and utilize
+      novel perspective allows us to: (1) derive simple
+                                                                     this knowledge to accomplish new tasks efficiently, then
+      but unexplored variants of GCRL to study how
+                                                                     we can greatly scale up task and skill learning to achieve
+      adding small representation capacity can already
+                                                                     similar level of generalization and performance for RL as
+      expand its capabilities; (2) investigate how dis-
+                                                                     what neural networks have enabled for other domains.
+      criminator function capacity and smoothness de-
+      termine the quality of discovered skills, or latent            Several works have tried to find a single generalizable task-
+      goals, through modifying latent dimensionality                 agnostic reward function which can potentially be used
+      and applying spectral normalization; (3) adapt                 across several environments. The use of such intrinsic re-
+      techniques such as hindsight experience replay                 ward functions has been motivated as exploration heuristics
+      (HER) from GCRL to MI-based RL; and lastly,                    such as curiosity and novelty (Schmidhuber, 1991; Oudeyer
+      (4) propose a novel evaluation metric, named la-               & Kaplan, 2009; Bellemare et al., 2016; Pathak et al., 2017),
+      tent goal reaching (LGR), for comparing empow-                 as optimizing mutual information (MI) (Gregor et al., 2017;
+      erment algorithms with different choices of latent             Eysenbach et al., 2019; Sharma et al., 2020b;a) or as empow-
+      dimensionality and discriminator parameteriza-                 erment (Klyubin et al., 2005; Jung et al., 2011; Mohamed &
+      tion. Through principled mathematical deriva-                  Rezende, 2015). Classically, goal-conditioned RL (GCRL)
+      tions and careful experimental studies, our work               has shown success in learning diverse and useful skills in
+      lays a novel foundation from which to evaluate,                concurrence to MI-based methods. GCRL optimizes a sta-
+      analyze, and develop representation learning tech-             tionary and interpretable reward for goal-reaching, but when
+      niques in goal-based RL.                                       the goal space is high-dimensional, how does the agent
+                                                                     know which part of the space is relevant and which part can
+  †
+    Work done while an intern at Google.                             be ignored? In such cases, prior GCRL works frequently
+  1
+    University of Michigan 2 Stanford University 3 LG AI Research    rely on manual definition (Andrychowicz et al., 2017) or
+4
+  Google Research 5 University of California, Berkeley. Correspon-   off-the-shelf representation learning (Nachum et al., 2018;
+dence to: Jongwook Choi <jwook@umich.edu>, Shixiang Shane            Nair et al., 2018; Wu et al., 2018) optimized prior to or
+Gu <shanegu@google.com>.
+                                                                     separately from reinforcement learning. Meanwhile, MI or
+Proceedings of the 38 th International Conference on Machine         empowerment-based RL offers a clear objective for repre-
+Learning, PMLR 139, 2021. Copyright 2021 by the author(s).           sentation learning through reinforcement learning, but the
+                          Variational Empowerment as Representation Learning for Goal-Based RL
+
+properties of the learned behaviors are often unclear due to     2   Related Work
+lack of a proper evaluation metric. Prior works use qualita-
+tive inspections of learned behaviors, variational bound esti-   Reward engineering has been a bottleneck to broad appli-
+mates, or downstream task performances of a skill-utilizing      cation of RL. Some of the prior attempts to alleviate this
+high-level policy (Eysenbach et al., 2019; Sharma et al.,        problem have sought introduce human supervision in al-
+2020b), but these heuristics are costly or indirect measures     ternative, easier forms, such as demonstrations (Ng et al.,
+and make objective comparisons and analyses of various           2000; Abbeel & Ng, 2004; Ziebart et al., 2008; Ho & Ermon,
+mathematically-similar MI-based algorithms difficult (Flo-       2016; Fu et al., 2017; Ghasemipour et al., 2019) or prefer-
+rensa et al., 2017; Eysenbach et al., 2019; Achiam et al.,       ences (Hadfield-Menell et al., 2017; Christiano et al., 2017).
+2018; Warde-Farley et al., 2019; Hansen et al., 2020; Sharma     However, since these methods still rely on non-negligible
+et al., 2020b). To recover a more direct metric, an impor-       amounts of human interventions, they cannot automatically
+tant question is: what do these MI-based objectives learn        scale to solving thousands of new environments and tasks.
+representations for?                                             Empowerment and reward-free RL. Task-agnostic re-
+In this work, we interpret MI and empowerment-based RL as        ward functions have been proposed to encourage explo-
+a principled framework for representation learning in goal-      ration in environments using notions of curiosity or nov-
+conditioned RL. Starting from a simple observation that the      elty (Schmidhuber, 1991; Oudeyer & Kaplan, 2009; Schmid-
+objective of the standard GCRL can be seen as a special          huber, 2010; Bellemare et al., 2016; Pathak et al., 2017; Co-
+case of variational MI with a fixed hard-coded variational       las et al., 2018). In a similar vein, some methods maximize
+posterior, our analysis provides a unification of these ideas    the state-visitation entropy (Hazan et al., 2018; Pong et al.,
+and explicitly reframes skill discovery via mutual informa-      2019; Lee et al., 2019; Ghasemipour et al., 2019). These ap-
+tion maximization (Gregor et al., 2017; Eysenbach et al.,        proaches can enable solutions to otherwise hard exploration
+2019) as a combination of representation learning and goal-      sparse-reward problems. Some of the recent work has em-
+conditioned reinforcement learning, where both the space of      phasized on empowerment or option/skill discovery through
+goals and the skills to reach those goals are learned jointly    optimization of mutual information based intrinsic reward
+via a MI-based objective. While the connections between          functions. Classically, empowerment measures the ability
+representation learning, mutual information estimation, and      of an agent to control the environment (Salge et al., 2014;
+goal-conditioned RL have been explored in a number of pre-       Klyubin et al., 2005; Jung et al., 2011), which was scaled
+vious works (Gregor et al., 2017; Warde-Farley et al., 2019;     up by (Mohamed & Rezende, 2015; Karl et al., 2017). The
+Gupta et al., 2018), our exact mathematical formulation and      concept of mutual information, which is also at the heart
+granular analyses enable new perspectives and synergies          of empowerment based methods, has been further used to
+between GCRL and MI-based RL:                                    motivate several objectives for skill discovery (Florensa
+                                                                 et al., 2017; Eysenbach et al., 2019; Achiam et al., 2018;
+1. [MI to GCRL] We propose simple but novel variants of          Warde-Farley et al., 2019; Hansen et al., 2020; Sharma et al.,
+   GCRL – adaptive-variance and linear-mapping GCRL –            2020b; Campos et al., 2020). Recent works have shown that
+   to study how adding small representation capacity can         skills learned through mutual information can be meaning-
+   already expand the capabilities of GCRL.                      fully combined to solve downstream tasks (Eysenbach et al.,
+                                                                 2019; Sharma et al., 2020b), even on real robots (Sharma
+2. [MI to GCRL] We show that a proper representation
+                                                                 et al., 2020a).
+   regularization from generative modeling, such as spectral
+   normalization (Miyato et al., 2018), can improve the          Goal-conditioned RL. Goal-conditioned RL (Kaelbling,
+   quality of latent goals discovered (and the stability of      1993; Pong et al., 2018; Andrychowicz et al., 2017; Schaul
+   MI-based algorithms).                                         et al., 2015) provides a framework for enabling agents to
+                                                                 reach user-specified goal states. The behaviors learned via
+3. [GCRL to MI] We adapt hindsight experience replay
+                                                                 GCRL can be interpretable and easy to analyze in terms
+   (HER) (Andrychowicz et al., 2017) from GCRL to more
+                                                                 of the goal-reaching function. However, GCRL assumes
+   general MI-based objectives and show posterior HER
+                                                                 that a goal-reaching function has been specified in addition
+   (P-HER) consistently provides substantial performance
+                                                                 to goal states, which precludes broader application for the
+   gains in MI-based RL algorithms.
+                                                                 same reasons as those for reward engineering. To overcome
+4. [GCRL to MI] We propose the latent goal reach-                such limitations, some prior works have used variational
+   ing (LGR) metric as an intuitive, task-oriented, and          inference (Rudner et al., 2021) or mutual information in
+   discriminator-agnostic metric for objectively evaluating      the GCRL framework (Pong et al., 2019; Warde-Farley
+   empowerment algorithms.                                       et al., 2019) to learn. However, these works use the MI
+                                                                 optimization as an unsupervised scheme to generate and
+                                                                 achieve goals. On the other hand, our work studies skill-
+                                                                 discovery/empowerment methods and provides an explicit
+                           Variational Empowerment as Representation Learning for Goal-Based RL
+
+reinterpretation within the GCRL framework, combining the          tractable posterior p(z|s), often called a (skill) discrimi-
+representation learning perspective with the goal-reaching         nator (Eysenbach et al., 2019).
+behavior of GCRL.                                                  Given a parameterized policy πθ (a|s, z), Eq. 1 gives a joint
+                                                                   maximization objective (a variational lower bound) with
+3     Background                                                   respect to πθ and qλ :
+In this section, we briefly review mutual information (MI)-
+                                                                            F(θ, λ) = Ez,s∼πθ [log qλ (z|s) − log p(z)] .     (2)
+based objectives for skill discovery, focusing on variational
+approaches introduced in (Mohamed & Rezende, 2015;                 A simple iterative RL procedure can be derived to opti-
+Gregor et al., 2017; Eysenbach et al., 2019; Sharma et al.,        mize this lower bound, assuming a parameterized policy
+2020b), and goal-conditioned RL (GCRL).                            πθ (a|s, z), where at iteration i,
+We denote a Markov decision process (MDP) M =                       λ(i) ← argmaxλ Ez,s∼π(i−1) [log qλ (z|s) − log p(z)] (3)
+(S, A, p, r), where S denotes the state space, A denotes the
+action space, p : S×S×A → [0, ∞) denotes the underlying                θ(i) ← argmaxθ Ez,s∼πθ [log qλ(i) (z|s) − log p(z)] . (4)
+(possibly stochastic) transition dynamics of the environment       Eq. 3 is a simple supervised regression (e.g., maximum
+with the initial state distribution p0 : S → [0, ∞), and a re-     likelihood) on on-policy samples. Eq. 4 has the same form
+ward function r : S × A → R. The goal of the RL optimiza-          of standard RL, and therefore can be optimized using any
+tion problem is toPlearn   a policy π(a | s) which maximizes       RL algorithm (Gregor et al., 2017; Eysenbach et al., 2019).
+                     ∞
+the return Ep,π [ t=0 γ t r(st , at )] = Es∼ρπ ,a∼π [r(s, a)] ,
+for a discount factor γ ∈ [0, 1) where ρπ is an unnormal-          3.2    Goal-Conditioned RL
+ized γ-discounted state visitation density. Importantly, once      Goal-conditioned RL (Kaelbling, 1993; Schaul et al., 2015)
+we write an objective in the form of Eρπ ,π [r(s, a)], we can      (GCRL) is a standard, stationary-reward problem where we
+apply the policy gradient theorem (Sutton et al., 2000) to de-     aim to find a policy π(a|s, g) conditional on a goal g ∈ G
+rive a practical RL solver, as done in (Kakade, 2002; Silver       by maximizing
+et al., 2014; Schulman et al., 2015; Gu et al., 2017b; Ciosek
+& Whiteson, 2018), or learn it with Q-learning (Watkins &                        F (π) = Eg∼p(g),s∼πθ [−d(s, g)] ,            (5)
+Dayan, 1992). For simplicity of our notations, we omit the
+discount factor γ in the following sections and derivations.       where p(g, s) = p(g)ρπ (s|g), p(g) defines the task distribu-
+                                                                   tion over goals, and d(s, g) is a distance metric between state
+3.1   Mutual Information Maximization and                          s and goal g, such as an Euclidean distance. The main chal-
+      Empowerment                                                  lenges for goal-conditioned RL lie in defining the goal space
+MI maximization in RL such as empowerment generally                and the goal-reaching reward function −d(s, g), which of-
+means maximizing the mutual information between (some              ten requires task-specific knowledge or careful choices of
+representations of) actions and (some representations of)          goal space (Plappert et al., 2018).
+future states following those actions (Klyubin et al., 2005;       In off-policy learning, hindsight experience replay
+Mohamed & Rezende, 2015). The goal is to learn a set of            (HER) (Kaelbling, 1993; Andrychowicz et al., 2017) has
+actions that can influence future states to be diverse, but also   shown to improve learning of goal-conditioned policy sig-
+be predictable if we know what action is taken. In this work       nificantly. The key insight is that for a given exploration
+we focus on learning abstract representation z ∈ Z, which          episode {g, s0:T }, one can relabel the goal with an actually
+is an additional input to the policy π(a|s, z) and defines a       achieved goal S(s0:T ), derived by a strategy function S(·).
+set of empowered actions. The latent code z (either discrete       A typical choice is to relabel the goal as g̃ = S(s0:T ) = sT ,
+or continuous) can be interpreted as a macro-action, skill or      which can be seen as self-supervised curriculum learn-
+goal (Eysenbach et al., 2019; Sharma et al., 2020b).               ing (Andrychowicz et al., 2017; Lynch et al., 2019).
+We discuss two variants of MI objectives in RL: state-
+predictive MI (Sharma et al., 2020b), which maximizes              4     Expressivity Tradeoffs in Variational
+I(s′ ; z | s), and state-marginal MI (Eysenbach et al., 2019),           Empowerment
+which maximizes I(s; z). Due to page limit, we discuss
+                                                                   Interestingly, the simple objective in Eq. 2, which we term
+these variants more in detail in Appendix A. In this work, we
+                                                                   Variational Goal-Conditioned RL (VGCRL), encapsulates
+focus on state-marginal MI, whose optimization objective
+                                                                   most of the prior MI-based algorithms (Eysenbach et al.,
+is:
+                                                                   2019; Warde-Farley et al., 2019; Hansen et al., 2020) with
+ I(s; z) = Ez∼p(z),s∼ρπ (s|z) [log p(z | s) − log p(z)]            the only differences being goal space Z, prior p(z), and
+          ≥ Ez∼p(z),s∼ρπ (s|z) [log qλ (z | s) − log p(z)] (1)     discriminator qλ (z|s), as detailed in Table 1. For example,
+                                                                   when z is a discrete variable, this reduces to DIAYN (Ey-
+where qλ (z|s) is a variational approximation to the in-           senbach et al., 2019) or VALOR (Achiam et al., 2018).
+                            Variational Empowerment as Representation Learning for Goal-Based RL
+
+                            Method                       Goal space             qλ (z|s)     Learnable λ    Learning πz
+                                                                      d               2
+                  GCRL (Kaelbling, 1993)              Continuous (R )    N (s, σ I)        -                  (HER)
+                       aGCRL (ours)                   Continuous (Rd )    N (s, Σ)        Σ                    HER
+                      linGCRL (ours)                  Continuous (Rd ) N (As, σ 2 I)      A                   P-HER
+                 InfoGAIL∗ (Li et al., 2017)             Discrete       Categorical       qλ                     -
+               DIAYN (Eysenbach et al., 2019)            Discrete       Categorical       qλ                     -
+                    DIAYN (continuous)                Continuous (Rd ) N (µ(s), Σ(s))    µ(·)                    -
+             DISCERN (Warde-Farley et al., 2019)      = S (e.g. image) Non-parametric Embedding(·)             HER
+                 VISR (Hansen et al., 2020)           Continuous (Rd ) vMF(µ(s), κ)      µ(·)                   SF
+                            VGCRL                           Any                   Any            Any       P-HER or SF
+
+Table 1: A summary of algorithms, all are optimized with the single objective in Eq. 2. vMF stands for von Mise-Fisher distribution.
+DIAYN (Eysenbach et al., 2019), DISCERN (Warde-Farley et al., 2019), VISR (Hansen et al., 2020) can be seen as special cases.
+For InfoGAIL (Li et al., 2017)∗ , we focus on the MI regularization objective LI (π, Q) only. Since they are under the same objective,
+learning techniques for goal-conditioned policy πz such as successor features (SF) (Barreto et al., 2017) and hindsight experience replay
+(HER) (Andrychowicz et al., 2017) can be adapted for more general settings within the VGCRL objective.
+
+
+If z is continuous, a natural choice for qλ is a Gaussian, i.e.           5     Goal-Conditioned RL as Variational
+N (µ(s), Σ(s)), where both µ and Σ may be parameterized                         Empowerment
+using any function approximators with a range of expres-
+sivities, from identity functions to deep neural networks.                In this section, we discuss GCRL with representation learn-
+Throughout the rest of the paper, we show how various                     ing, through the lens of variational empowerment: how the
+simple choices for qλ lead to algorithms with different prop-             representation capacity leads to algorithms with different
+erties.                                                                   properties. We first derive two “lost relatives” of GCRL that
+                                                                          only add minimal representation capacities but still result in
+Goal-Conditioned RL as a Coarse Variational Approxi-
+                                                                          interesting learning behaviors while keeping the stability of
+mation. A simple observation is that if we choose a fixed
+                                                                          GCRL, and then discuss how we can study representation ca-
+variational distribution, such as N (s, σ 2 I) with σ as a fixed
+                                                                          pacity in more general settings through varying smoothness
+hyperparameter and the goal space identical to the observa-
+                                                                          constraints.
+tion space (Z = S), the RL objective in Eq. 4 becomes (see
+Appendix B for mathematical details):
+                                                                          5.1   Adaptive Variances for Relevance Determination
+                          h               i
+                                        2
+       F(π) = Ez,s∼πθ − σ12 kz − sk + constant. (6)                       Given the observation in Section 4, a straightforward mod-
+                                                                          ification to GCRL is to allow the variances to be learned,
+It is straightforward to see that this recovers the objective of          while keeping µ(s) = s. If we assume a global learned
+GCRL in Eq. 5 exactly (up to a constant), where the distance              covariance, i.e., qλ (z|s) = N (s, Σ), λ = {Σ}, Eq. 2 gives
+function uses a squared loss. This provides a novel interpre-             us a novel variant of GCRL, which we call adaptive GCRL
+tation for GCRL algorithms as a variational empowerment                   (aGCRL). The intuition behind this algorithm is the follow-
+algorithm with a hard-coded and fixed variational distribu-               ing: let us assume a simple diagonal covariance matrix;
+tion. Given that no qλ parameters are adapted, this generally             during learning, this algorithm will quickly shrink σ for the
+provides a very loose bound on MI; however, prior work on                 goal dimensions that the agent can reliably reach, and will
+GCRL shows that this RL objective, unlike empowerment-                    expand variances for the dimensions that the agent has a
+based, learns useful goal-reaching skills stably (Kaelbling,              hard time to; it therefore can identify and prioritize goal-
+1993; Andrychowicz et al., 2017; Pong et al., 2018) thanks                reaching in feasible directions, discounting unfeasible ones,
+to a stationary reward function. This suggests that GCRL                  resembling properties of automatic relevance determination
+and prior variational empowerment methods represent two                   (ARD) (Wipf & Nagarajan, 2008).
+ends of a spectrum, corresponding to the expressivity of                  Experiment: Automatic Controllability Determination
+the variational distribution used to approximately maximize               on Windy PointMass. We design a simple Windy Point-
+mutual information, and neither of the two is perfect, with               Mass environment to study adaptive behaviors, which is
+their own pros and cons. Varying expressivity — through                   simulated in Mujoco (Todorov et al., 2012). We assume
+the choices of Z and qλ — and evaluating the qualities of                 a point mass in N -dimensional space (Figure 1a), where
+learned goal spaces is a central theme of the next section.               some dimensions have random force perturbations and there-
+                                                                          fore are difficult to control. Such perturbations are often
+                                                                          studied in the risk-sensitive RL literature (Fox et al., 2015;
+                                                                          Maddison et al., 2017); however, in our experiments, they
+                                      Variational Empowerment as Representation Learning for Goal-Based RL
+
+                       Method                        HalfCheetah                            Ant                            Humanoid
+                |G|                           F       LGRv (s) LGR(z)           F         LGRv (s) LGR(z)          F       LGRv (s) LGR(z)
+                10     DIAYN                 1.608     0.800       0.963   -0.835          0.529       0.806     1.261      0.523    0.922
+                       DIAYN + P-HER         1.372     1.424       0.934   -0.049          0.486       0.889     1.856      0.312    0.953
+                20     DIAYN                 1.732     1.125       0.920   -1.308          0.610       0.763     0.713      0.315    0.768
+                       DIAYN + P-HER         1.852     1.214       0.891   -1.288          0.515       0.823     2.251      0.183    0.922
+                50     DIAYN                 1.475     0.673       0.827   -3.812          0.402       0.523     -1.158     0.268    0.549
+                       DIAYN + P-HER         1.699     0.704       0.834   -2.171          0.637       0.750      2.848     0.545    0.891
+                200    DIAYN                 2.854     0.698       0.801   -8.450          0.396       0.113     -4.396     0.208    0.337
+                       DIAYN + P-HER         3.357     0.814       0.844   -7.047          0.555       0.263      3.448     0.866    0.766
+                1000 DIAYN         -8.286              1.156       0.176   -16.795         0.434       0.005     -8.914     0.325    0.101
+                     DIAYN + P-HER -4.424              0.510       0.361   -10.941         0.322       0.028      3.395     1.569    0.762
+
+Table 3: Evaluation of Latent Goal-Reaching Metric on MuJoCo control suites, after a total of 10M environment steps of
+training. F is the (average) empowerment reward, F = Ez [log qλ (z|s) − p(z)]. LGRv (s) is the squared error in observation
+space (the lower, the better) with respect to velocity dimensions between the marginal state and the target state, and LGR(z)
+denotes the accuracy of top-1 classification of the discriminator qλ (z|s) (the higher, the better, max 1.0).
+
+                                                              HalfCheetah                       Ant                         Humanoid
+                      qλ (z|s)       P-HER? SN?
+                                                       F       LGRv (s) LGR(z)        F       LGRv (s) LGR(z)          F    LGRv (s) LGR(z)
+                                        -     -       0.932     1.005   0.159       -0.590     1.005     0.382     0.239     1.461   0.202
+                 N (µ(s), fixed2 )      ✔     -      -0.142     1.273   0.360        0.140     2.449     0.300     0.020     1.452   0.244
+      |G| = 5
+
+
+
+
+                                        -    -       -0.731     1.251   0.172       -18.490    0.306     0.427     -3.597    0.538   0.147
+                                 2      ✔    -       -2.161     1.132   0.289        -0.108    2.423     0.303      1.207    0.206   0.074
+                 N (µ(s), Σ(s) )        -    ✔        5.856     0.604   0.019         2.548    0.925     0.091      4.509    0.460   0.040
+                                        ✔    ✔        5.803     1.352   0.017         4.349    0.463     0.039      5.203    0.203   0.026
+                                        -     -      -2.646     0.766   0.325       -16.196    0.367     0.486     -3.576    0.231   0.198
+                  GMM (K = 8)
+                                        ✔     -      -3.091     1.065   0.404        -2.874    2.794     0.325      3.526    0.581   0.043
+
+Table 4: Comparison of continuous variants of VGCRL, where the dimension of the goal space is |G| = 5. SN denotes
+Spectral Normliazation (Section 5.3). LGR(z) is the goal reaching performance in the latent space (the lower, the better). A
+full table containing more comprehensive comparison and corresponding plots can be found in Appendix C (Table 5).
+
+
+state embedding φ(s) := argmaxz q(z|s), where h−1 (z)                            We first observe that P-HER can accelerate and improve
+is defined to be an arbitrary state s that is associated with                    learning (Figure 4, Tables 3 and 4). Such improvements are
+latent z, which is in our case the marginal state from the                       significant in high-dimensional goal spaces (e.g., |G| = 200)
+latent-conditioned policy πθ . A difference is that (Wu et al.,                  and more difficult control tasks such as Ant or Humanoid
+2018) use contrastive learning whereas VGCRL maximizes                           with high dimensionalities, in which both the discrimina-
+likelihood to learn the representation q.                                        tor and the latent-conditioned policy are difficult to learn.
+                                                                                 Because an optimization of goal-conditioned policy (Eq. 4)
+6.3   Experiments: Posterior HER and Latent Goal                                 is more difficult than discriminators (Eq. 3), relabeling of
+      Reaching                                                                   goal can greatly accelerate RL, which also results in better
+In this section, we evaluate the performance of several vari-                    discriminability. As shown in Tables 4 and 5, P-HER can
+ants of VGCRL on standard locomotion tasks (Brockman                             improve not only the optimization objective but also other
+et al., 2016). We consider both a discrete latent space, anal-                   metrics such as discriminator’s accuracy and goal reaching
+ogous to that used by DIAYN (Eysenbach et al., 2019),                            performance across different design choices and environ-
+and a continuous latent space, where the variational pos-                        ments.
+terior qλ (z|s) chosen to be a Gaussian posterior (VGCRL-                        Moreover, when Spectral Normalization (Section 5.3) is ap-
+Gaussian), with either learnable or fixed variances, or Gaus-                    plied, we observe a significant improvement in terms of
+sian Mixtures (VGCRL-GMM). To evaluate the perfor-                               the learning progress and evaluation metrics (Figure 4, Ta-
+mance, we report the following metrics: (1) the empower-                         ble 4). As shown in Figure 4, while there are some progress
+ment objective F = Ez [log q(z|s) − p(z)], (2) LGR(z): the                       with vanilla VGCRL-Gaussian (or VGCRL-GMM), the op-
+latent goal reaching metric, and (3) LGRv (s): the latent goal                   timization objective F as well as evaluation metrics do not
+reaching metric with respect to velocity dimensions (Sec-                        improve as much as the one with SN, despite the bigger
+tion 6.2).
+                          Variational Empowerment as Representation Learning for Goal-Based RL
+
+expressivity due to no constraint on qλ (z|s). We can also      Bellemare, M., Srinivasan, S., Ostrovski, G., Schaul, T.,
+see that with SN (and P-HER as well), the distance between        Saxton, D., and Munos, R. Unifying count-based explo-
+achieved and desired goal is much lower. More experimental        ration and intrinsic motivation. In Advances in neural
+results and discussions can be found in Appendix C.               information processing systems, pp. 1471–1479, 2016.
+                                                                Brockman, G., Cheung, V., Pettersson, L., Schneider, J.,
+7   Conclusion                                                    Schulman, J., Tang, J., and Zaremba, W. Openai gym.
+Our variational GCRL (VGCRL) framework unifies unsu-              arXiv preprint arXiv:1606.01540, 2016.
+pervised skill learning methods based on variational em-
+powerment (Eysenbach et al., 2019; Gregor et al., 2017;         Campos, V., Trott, A., Xiong, C., Socher, R., i Nieto, X. G.,
+Sharma et al., 2020b) with goal-conditioned RL (GCRL)             and Torres, J. Explore, discover and learn: Unsupervised
+methods, allowing us to transfer techniques and insights          discovery of state-covering skills, 2020.
+across both types of approaches. Viewing GCRL as varia-         Christiano, P. F., Leike, J., Brown, T., Martic, M., Legg,
+tional empowerment, we derive simple extensions of goal-          S., and Amodei, D. Deep reinforcement learning from
+based methods that exhibit some representation learning ca-       human preferences. In Advances in Neural Information
+pability of variational methods, e.g., disentangle underlying     Processing Systems, pp. 4299–4307, 2017.
+factors of variations and automatically determine control-
+lable dimensions, while keeping the learning stability of       Ciosek, K. and Whiteson, S. Expected policy gradients. In
+GCRL. Viewing variational empowerment as GCRL, we                 Thirty-Second AAAI Conference on Artificial Intelligence,
+can transfer popular optimization techniques such as rela-        2018.
+beling from GCRL to variational empowerment algorithms,
+                                                                Colas, C., Fournier, P., Sigaud, O., Chetouani, M., and
+and propose latent goal-reaching (LGR) as a more objective,
+                                                                  Oudeyer, P.-Y. Curious: intrinsically motivated mod-
+performance-based metric for evaluating the quality of skill
+                                                                  ular multi-goal reinforcement learning. arXiv preprint
+(latent goal) discovery. We hope that these insights can
+                                                                  arXiv:1810.06284, 2018.
+lay the ground for further developments of more capable
+and performant algorithms for unsupervised reinforcement        Devlin, J., Chang, M.-W., Lee, K., and Toutanova, K. Bert:
+learning in future work.                                          Pre-training of deep bidirectional transformers for lan-
+                                                                  guage understanding. arXiv preprint arXiv:1810.04805,
+Acknowledgements                                                  2018.
+The authors are grateful to Igor Mordatch, Lisa Lee, Alek-      Eysenbach, B., Gupta, A., Ibarz, J., and Levine, S. Diver-
+sandra Faust, and Nicolas Heess for helpful discussions and       sity is All You Need: Learning Skills without a Reward
+comments. JC was partly supported by Korea Foundation             Function. In ICLR, 2019.
+for Advanced Studies.
+                                                                Florensa, C., Duan, Y., and Abbeel, P. Stochastic neural
+References                                                        networks for hierarchical reinforcement learning. arXiv
+                                                                  preprint arXiv:1704.03012, 2017.
+Abbeel, P. and Ng, A. Y. Apprenticeship learning via inverse
+  reinforcement learning. In ICML, 2004.                        Fox, R., Pakman, A., and Tishby, N. Taming the noise in
+                                                                  reinforcement learning via soft updates. arXiv preprint
+Achiam, J., Edwards, H., Amodei, D., and Abbeel, P. Vari-         arXiv:1512.08562, 2015.
+  ational Option Discovery Algorithms. arXiv preprint
+                                                                Fu, J., Luo, K., and Levine, S. Learning robust rewards
+  arXiv:1807.10299, 2018.
+                                                                  with adversarial inverse reinforcement learning. arXiv
+Andrychowicz, M., Wolski, F., Ray, A., Schneider, J., Fong,       preprint arXiv:1710.11248, 2017.
+  R., Welinder, P., McGrew, B., Tobin, J., Abbeel, P., and      Ghasemipour, S. K. S., Zemel, R., and Gu, S. A divergence
+  Zaremba, W. Hindsight Experience Replay. In NIPS,               minimization perspective on imitation learning methods.
+  2017.                                                           Conference on Robot Learning (CoRL), 2019.
+Barber, D. and Agakov, F. V. The IM algorithm: a varia-         Gregor, K., Rezende, D. J., and Wierstra, D. Variational
+  tional approach to information maximization. In NIPS,           Intrinsic Control. In ICLR Workshop, 2017.
+  2003.
+                                                                Gu, S., Holly, E., Lillicrap, T., and Levine, S. Deep rein-
+Barreto, A., Dabney, W., Munos, R., Hunt, J. J., Schaul, T.,      forcement learning for robotic manipulation with asyn-
+  Silver, D., and van Hasselt, H. Successor Features for          chronous off-policy updates. In 2017 IEEE international
+  Transfer in Reinforcement Learning. In NIPS, pp. 1–24,          conference on robotics and automation (ICRA), pp. 3389–
+  November 2017.                                                  3396. IEEE, 2017a.
+                           Variational Empowerment as Representation Learning for Goal-Based RL
+
+Gu, S. S., Lillicrap, T., Turner, R. E., Ghahramani, Z.,          Karl, M., Soelch, M., Becker-Ehmck, P., Benbouzid, D.,
+  Schölkopf, B., and Levine, S. Interpolated policy gradi-          van der Smagt, P., and Bayer, J. Unsupervised real-time
+  ent: Merging on-policy and off-policy gradient estimation         control through variational empowerment, 2017.
+  for deep reinforcement learning. In Advances in neural
+  information processing systems, pp. 3846–3855, 2017b.           Klyubin, A. S., Polani, D., and Nehaniv, C. L. All else
+                                                                    being equal be empowered. In European Conference on
+Guadarrama, S., Korattikara, A., Ramirez, O., Castro, P.,           Artificial Life, pp. 744–753. Springer, 2005.
+  Holly, E., Fishman, S., Wang, K., Gonina, E., Wu,
+  N., Kokiopoulou, E., Sbaiz, L., Smith, J., Bartók, G.,          Krizhevsky, A., Sutskever, I., and Hinton, G. E. Imagenet
+  Berent, J., Harris, C., Vanhoucke, V., and Brevdo, E. TF-         classification with deep convolutional neural networks.
+ Agents: A library for reinforcement learning in tensorflow.        In Advances in neural information processing systems,
+  2018. URL https://github.com/tensorflow/                          pp. 1097–1105, 2012.
+  agents.                                                         Lee, L., Eysenbach, B., Parisotto, E., Xing, E., Levine,
+Gupta, A., Eysenbach, B., Finn, C., and Levine, S. Unsu-            S., and Salakhutdinov, R. Efficient exploration via state
+  pervised meta-learning for reinforcement learning. arXiv          marginal matching. arXiv preprint arXiv:1906.05274,
+  preprint arXiv:1806.04640, 2018.                                  2019.
+
+Haarnoja, T., Zhou, A., Hartikainen, K., Tucker, G., Ha,          Li, Y., Song, J., and Ermon, S. Infogail: Interpretable imita-
+  S., Tan, J., Kumar, V., Zhu, H., Gupta, A., Abbeel, P.,            tion learning from visual demonstrations. In Advances in
+  et al. Soft actor-critic algorithms and applications. arXiv        neural information processing systems, 2017.
+  preprint arXiv:1812.05905, 2018.                                Lynch, C., Khansari, M., Xiao, T., Kumar, V., Tompson, J.,
+Hadfield-Menell, D., Milli, S., Abbeel, P., Russell, S. J., and     Levine, S., and Sermanet, P. Learning latent plans from
+  Dragan, A. Inverse reward design. In Advances in neural           play. arXiv preprint arXiv:1903.01973, 2019.
+  information processing systems, pp. 6765–6774, 2017.            Maddison, C. J., Lawson, D., Tucker, G., Heess, N., Doucet,
+Hansen, S., Dabney, W., Barreto, A., Van de Wiele, T.,             A., Mnih, A., and Teh, Y. W. Particle value functions.
+ Warde-Farley, D., and Mnih, V. Fast Task Inference with           arXiv preprint arXiv:1703.05820, 2017.
+  Variational Intrinsic Successor Features. In ICLR, 2020.
+                                                                  Miyato, T., Kataoka, T., Koyama, M., and Yoshida, Y. Spec-
+Hausman, K., Springenberg, J. T., Wang, Z., Heess, N.,             tral normalization for generative adversarial networks.
+  and Riedmiller, M. Learning an embedding space for               arXiv preprint arXiv:1802.05957, 2018.
+  transferable robot skills. 2018.
+                                                                  Mnih, V., Kavukcuoglu, K., Silver, D., Graves, A.,
+Hazan, E., Kakade, S. M., Singh, K., and Van Soest, A.             Antonoglou, I., Wierstra, D., and Riedmiller, M. Playing
+  Provably efficient maximum entropy exploration. arXiv            atari with deep reinforcement learning. arXiv preprint
+  preprint arXiv:1812.02690, 2018.                                 arXiv:1312.5602, 2013.
+
+Ho, J. and Ermon, S. Generative adversarial imitation learn-      Mohamed, S. and Rezende, D. J. Variational information
+  ing. In Advances in neural information processing sys-           maximisation for intrinsically motivated reinforcement
+  tems, pp. 4565–4573, 2016.                                       learning. In Advances in neural information processing
+                                                                   systems, pp. 2125–2133, 2015.
+Jung, T., Polani, D., and Stone, P. Empowerment for contin-
+  uous agent—environment systems. Adaptive Behavior,              Nachum, O., Gu, S., Lee, H., and Levine, S. Near-optimal
+  19(1):16–39, 2011.                                                representation learning for hierarchical reinforcement
+                                                                    learning. arXiv preprint arXiv:1810.01257, 2018.
+Kaelbling, L. P. Learning to achieve goals. In IJCAI, pp.
+ 1094–1099. Citeseer, 1993.                                       Nair, A. V., Pong, V., Dalal, M., Bahl, S., Lin, S., and
+                                                                    Levine, S. Visual reinforcement learning with imagined
+Kakade, S. M. A natural policy gradient. In Advances in             goals. In Advances in Neural Information Processing
+  neural information processing systems, pp. 1531–1538,             Systems, pp. 9191–9200, 2018.
+  2002.
+                                                                  Ng, A. Y., Russell, S. J., et al. Algorithms for inverse
+Kalashnikov, D., Irpan, A., Pastor, P., Ibarz, J., Herzog,          reinforcement learning. In ICML, 2000.
+  A., Jang, E., Quillen, D., Holly, E., Kalakrishnan, M.,
+  Vanhoucke, V., et al. Qt-opt: Scalable deep reinforcement       Oudeyer, P.-Y. and Kaplan, F. What is intrinsic motivation?
+  learning for vision-based robotic manipulation. arXiv             a typology of computational approaches. Frontiers in
+  preprint arXiv:1806.10293, 2018.                                  neurorobotics, 1:6, 2009.
+                          Variational Empowerment as Representation Learning for Goal-Based RL
+
+Pathak, D., Agrawal, P., Efros, A. A., and Darrell, T.          Silver, D., Lever, G., Heess, N., Degris, T., Wierstra, D., and
+  Curiosity-driven exploration by self-supervised predic-          Riedmiller, M. Deterministic policy gradient algorithms.
+  tion. In Proceedings of the IEEE Conference on Computer          2014.
+  Vision and Pattern Recognition Workshops, pp. 16–17,
+  2017.                                                         Sutton, R. S., McAllester, D. A., Singh, S. P., and Mansour,
+                                                                  Y. Policy gradient methods for reinforcement learning
+Plappert, M., Andrychowicz, M., Ray, A., McGrew, B.,              with function approximation. In Advances in neural in-
+  Baker, B., Powell, G., Schneider, J., Tobin, J., Chociej,       formation processing systems, pp. 1057–1063, 2000.
+  M., Welinder, P., et al. Multi-goal reinforcement learn-
+  ing: Challenging robotics environments and request for        Tassa, Y., Doron, Y., Muldal, A., Erez, T., Li, Y., Casas, D.
+  research. arXiv preprint arXiv:1802.09464, 2018.                d. L., Budden, D., Abdolmaleki, A., Merel, J., Lefrancq,
+                                                                  A., et al. Deepmind control suite. arXiv preprint
+Pong, V., Gu, S., Dalal, M., and Levine, S. Temporal differ-      arXiv:1801.00690, 2018.
+  ence models: Model-free deep rl for model-based control.
+  International Conference on Learning Representations          Todorov, E., Erez, T., and Tassa, Y. Mujoco: A physics
+  (ICLR), 2018.                                                   engine for model-based control. In 2012 IEEE/RSJ Inter-
+                                                                  national Conference on Intelligent Robots and Systems,
+Pong, V. H., Dalal, M., Lin, S., Nair, A., Bahl, S., and          pp. 5026–5033. IEEE, 2012.
+  Levine, S. Skew-fit: State-covering self-supervised re-
+                                                                Warde-Farley, D., Van de Wiele, T., Kulkarni, T., Ionescu,
+  inforcement learning. arXiv preprint arXiv:1903.03698,
+                                                                 C., Hansen, S., and Mnih, V. Unsupervised Control
+  2019.
+                                                                 Through Non-Parametric Discriminative Rewards. In
+Rakelly, K., Zhou, A., Quillen, D., Finn, C., and Levine,        ICLR, 2019.
+  S. Efficient off-policy meta-reinforcement learning
+                                                                Watkins, C. J. and Dayan, P. Q-learning. Machine learning,
+  via probabilistic context variables. arXiv preprint
+                                                                 8(3-4):279–292, 1992.
+  arXiv:1903.08254, 2019.
+                                                                Wipf, D. P. and Nagarajan, S. S. A new view of automatic
+Rudner, T. G. J., Pong, V. H., McAllister, R., Gal, Y., and
+                                                                 relevance determination. In Advances in neural informa-
+  Levine, S. Outcome-driven reinforcement learning via
+                                                                 tion processing systems, pp. 1625–1632, 2008.
+  variational inference. 2021.
+                                                                Wu, Y., Tucker, G., and Nachum, O. The laplacian in rl:
+Salge, C., Glackin, C., and Polani, D. Empowerment – An
+                                                                 Learning representations with efficient approximations.
+  Introduction. In Guided Self-Organization: Inception.
+                                                                 arXiv preprint arXiv:1810.04586, 2018.
+  2014.
+                                                                Ziebart, B. D., Maas, A. L., Bagnell, J. A., and Dey, A. K.
+Schaul, T., Horgan, D., Gregor, K., and Silver, D. Universal
+                                                                  Maximum entropy inverse reinforcement learning. In
+  Value Function Approximators. In ICML, 2015.
+                                                                  Aaai, volume 8, pp. 1433–1438. Chicago, IL, USA, 2008.
+Schmidhuber, J. Curious model-building control systems. In
+  Proc. international joint conference on neural networks,
+  pp. 1458–1463, 1991.
+
+Schmidhuber, J. Formal theory of creativity, fun, and in-
+  trinsic motivation (1990–2010). IEEE Transactions on
+  Autonomous Mental Development, 2(3):230–247, 2010.
+
+Schulman, J., Levine, S., Abbeel, P., Jordan, M., and Moritz,
+  P. Trust region policy optimization. In International
+  conference on machine learning, pp. 1889–1897, 2015.
+
+Sharma, A., Ahn, M., Levine, S., Kumar, V., Hausman, K.,
+  and Gu, S. Emergent real-world robotic skills via unsu-
+  pervised off-policy reinforcement learning. In Robotics:
+  Science and Systems (RSS), 2020a.
+
+Sharma, A., Gu, S., Levine, S., Kumar, V., and Hausman,
+  K. Dynamics-aware unsupervised discovery of skills. In
+  ICLR, 2020b.
+

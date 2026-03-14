@@ -1,0 +1,1383 @@
+IEEE TRANSACTIONS ON ROBOTICS, VOL. 42, 2026                                                                                                                   673
+
+
+
+
+           Actor–Critic Model Predictive Control:
+      Differentiable Optimization Meets Reinforcement
+                  Learning for Agile Flight
+                      Angel Romero , Member, IEEE, Elie Aljalbout , Yunlong Song , Member, IEEE,
+                                       and Davide Scaramuzza , Fellow, IEEE
+
+
+   Abstract—A key open challenge in agile quadrotor flight is how
+to combine the flexibility and task-level generality of model-free
+reinforcement learning (RL) with the structure and online replan-
+ning capabilities of model predictive control (MPC), aiming to
+leverage their complementary strengths in dynamic and uncertain
+environments. This article provides an answer by introducing a
+new framework called Actor–Critic MPC. The key idea is to embed
+a differentiable MPC within an actor–critic RL framework. This
+integration allows for short-term predictive optimization of control
+actions through MPC, while leveraging RL for end-to-end learning
+and exploration over longer horizons. Through various ablation
+studies, conducted in the context of agile quadrotor racing, we
+expose the benefits of the proposed approach: it achieves better
+out-of-distribution behavior, better robustness to changes in the
+quadrotor’s dynamics and improved sample efficiency. In addition,
+we conduct an empirical analysis using a quadrotor platform that
+reveals a relationship between the critic’s learned value function
+and the cost function of the differentiable MPC, providing a deeper
+understanding of the interplay between the critic’s value and the
+MPC cost functions. Finally, we validate our method in a drone
+racing task on different tracks, in both simulation and the real
+world. Our method achieves the same superhuman performance as
+state-of-the-art model-free RL, showcasing speeds of up to 21 m/s.
+We show that the proposed architecture can achieve real-time
+control performance, learn complex behaviors via trial and error,
+and retain the predictive properties of the MPC to better handle
+out-of-distribution behavior.
+   Index Terms—Autonomous aerial vehicles, deep reinforcement
+learning, optimal control, robot control, robot learning.
+
+
+                            I. INTRODUCTION
+       HE animal brain’s exceptional ability to quickly learn and
+T      adjust to complex behaviors is one of its most remarkable
+traits, which remains unattained by robotic systems. This has
+                                                                                   Fig. 1. Top: A block diagram of an actor–critic RL architecture with a MLP
+                                                                                   Bottom: A block diagram of the proposed approach. We combine the strength
+                                                                                   of actor–critic RL and the robustness of MPC by placing a differentiable MPC
+                                                                                   as the last module of the actor policy. At deployment time, the commands for
+                                                                                   the environment are drawn from solving an MPC, which leverages the system’s
+   Received 25 June 2025; revised 18 November 2025; accepted 2 December            dynamics and finds the optimal solution given the current state. We show that
+2025. Date of publication 16 December 2025; date of current version 16 January     the proposed approach achieves better out-of-distribution behavior and better
+2026. This work was supported in part by the European Union’s Horizon Europe       robustness to changes in the dynamics. We also show that the predictions of the
+Research and Innovation Programme under Grant101120732 (AUTOASSESS)                differentiable MPC can be used to improve the learning of the value function
+and in part by the European Research Council (ERC) under Grant 864042              and the sample efficiency.
+(AGILEFLIGHT). This article was recommended for publication by Associate
+Editor W. Pan and Editor M. Schwager upon evaluation of the reviewers’
+comments. (Corresponding author: Angel Romero.)
+   The authors are with the Robotics and Perception Group, University of Zurich,   often been attributed to the brain’s ability to make both im-
+8006 Zurich, Switzerland (e-mail: roagui@ifi.uzh.ch).
+   Video of the experiments: https://youtu.be/qekrF4Emzg.
+                                                                                   mediate and long-term predictions about the consequences of
+   Source code: https://github.com/uzh-rpg/acmpc_public.                           its actions and plan accordingly [1], [2], [3]. In robotics and
+   This article has supplementary downloadable material available at               control theory, model-based control has demonstrated a wide
+https://doi.org/10.1109/TRO.2025.3644945, provided by the authors.
+   Digital Object Identifier 10.1109/TRO.2025.3644945
+                                                                                   array of tasks with commendable reliability [4], [5]. In particular,
+
+      1941-0468 © 2025 IEEE. All rights reserved, including rights for text and data mining, and training of artificial intelligence and similar technologies.
+Personal use is permitted, but republication/redistribution requires IEEE permission. See https://www.ieee.org/publications/rights/index.html for more information.
+
+
+        Authorized licensed use limited to: Gyeongsang National Univ. Downloaded on March 14,2026 at 12:57:04 UTC from IEEE Xplore. Restrictions apply.
+674                                                                                                        IEEE TRANSACTIONS ON ROBOTICS, VOL. 42, 2026
+
+
+
+model predictive control (MPC) has achieved notable success                     end-to-end paradigm is attractive, it often lacks generalizability
+across various domains such as the operation of industrial chem-                and robustness to out-of-distribution scenarios. This has re-
+ical plants [6], control of legged robots [7]. In this work, we                 sulted in hesitancy to apply end-to-end learned architectures to
+focus specifically on the domain of agile drone flight, where                   safety–critical applications and has fostered the development of
+optimization-based approaches have recently shown a series of                   approaches that advocate for the introduction of safety in learned
+remarkable successes [8], [9], [10], [11]. In this context, the                 pipelines [25], [28], [29].
+effectiveness of MPC stems from its innate capability for online                   This article is an extension of [30], which introduced an
+replanning. This enables it to make decisions that optimize a                   architecture called Actor–Critic MPC to bridge the gap between
+system’s future states over a specified short time horizon.                     RL and MPC, applied to agile quadrotor flight. This architecture
+   However, as tasks grow in complexity, model-based ap-                        equips the agent with a differentiable MPC [31], placed after
+proaches necessitate substantial manual engineering, tailored to                the last layer of the actor network, as shown in Fig. 1. This
+each specific task. This includes the careful crafting of the cost              differentiable MPC module provides the system with online
+function, tuning of parameters, and design of an appropriate                    replanning capabilities and allows the policy to predict and
+planning strategy [10], [12]. Often, conservative assumptions                   optimize the short-term consequences of its actions.
+about the task are made, leading to potentially sub-optimal task                   Instead of relying on intermediate representations such as
+performance, for instance, in tasks where the dynamical system                  trajectories, we directly learn a map from observations to the cost
+is taken to its limits [9], [10], or in applications that require               function. Therefore, at deployment time, the control commands
+discrete mode-switching [13]. Furthermore, the modular struc-                   are drawn from solving an MPC, which leverages the quadrotor’s
+ture of model-based approaches may result in the progressive                    dynamics and finds the optimal solution given the current state.
+build-up of errors, accumulating in a cascading manner. This                    The differentiable MPC module, which incorporates a model
+can compound inaccuracies, reinforce conservative estimations,                  of the quadrotor’s dynamics, provides the agent with prior
+and diminish the overall effectiveness of the system [14], [15],                knowledge even before any training data is received. The second
+[16]. Recently, a plethora of works on generative modeling                      component of our actor is the cost map, a deep neural network
+approaches, particularly diffusion-based policies, have been                    that encapsulates the dependencies between observations and
+proposed to mitigate compounding errors in sequential decision-                 the cost function of the MPC. In other words, while the differ-
+making [17], [18], [19].                                                        entiable MPC captures temporal variations inside its horizon,
+   These limitations have motivated a growing interest in                       the neural cost module encodes the dependencies in relation
+data-driven and reinforcement-learning (RL) approaches for                      to the observations. This architecture thereby incorporates two
+robotics [20], [21], [22], [23], and specifically for human-                    different time horizon scales: the MPC drives the short-term
+champion performance in drone racing, both state-based [14]                     actions while the critic network manages the long-term ones.
+and vision-based [24], where RL controllers can be optimized                    This represents a significant advantage over vanilla actor–critic
+directly from task-level objectives rather than handcrafted cost                RL, where the actor is typically a randomly initialized feed-
+terms. In particular, Song et al.[14] demonstrated that model-free              forward neural network with no domain-specific structure nor
+RL can achieve superior performance compared to optimal                         priors.
+control techniques when pushing the limits in autonomous                           Romero et al. [30] demonstrated that the AC-MPC architec-
+racing. This success is mainly due to the ability of RL to                      ture exhibits more stable behavior in out-of-distribution scenar-
+directly optimize a nondifferentiable objective, eliminating the                ios in agile quadrotor flight tasks, highlighting its generaliz-
+need for proxy objectives in the form of a predefined reference                 ability compared to its neural-network-only counterpart. Last,
+time trajectory or continuous 3-D path. More generally, RL                      Romero et al. [30] showcased the applicability of the proposed
+offers a flexible approach to control by directly optimizing                    approach in real-world drone racing, demonstrating the feasibil-
+a feedback policy through interactions with the environment,                    ity and effectiveness of the AC-MPC architecture.
+eliminating the need for intermediate representations. Unlike                      This article extends [30] as follows.
+trajectory optimization or standard optimal control methods, RL                    1) Model predictive value expansion (MPVE): We introduce
+can handle sparse, intricate reward signals (such as minimizing                        an extension to our framework that incorporates MPVE, a
+crashes, energy consumption, or lap times). This combination                           critic-training scheme that reuses the short-horizon state-
+of offline learning, combined with the use of techniques like                          action predictions produced by the differentiable MPC
+domain randomization or curriculum learning often makes RL                             during every forward pass. Unlike general value expansion
+more scalable and effective in complex scenarios, where opti-                          methods that may require a separate policy for generat-
+mal control algorithms may struggle to yield real-time optimal                         ing rollouts, our approach efficiently improves the critic
+solutions [14].                                                                        without incurring additional policy call overhead. Our
+   However, RL architectures are not without their own set of                          analysis, performed on quadrotor systems, demonstrates
+challenges [15], [25]. Learning a model-free, end-to-end policy                        that this method improves sample efficiency, with the
+without explicitly leveraging prior knowledge in the training                          benefits being most pronounced for small values of the
+process, such as physics or dynamic models, results in the need                        TD parameter λ.
+to learn everything from data, often resulting in millions of                      2) Relationship between value function and MPC cost: We
+interactions within a simulator. In addition, while RL approaches                      perform a systematic analysis that reveals that the Hessian
+are generally better equipped to handle sparse rewards, they                           of the learned value function closely matches the quadratic
+still struggle as reward sparsity increases [26], [27]. While the                      cost matrices generated by the neural cost map. This
+      Authorized licensed use limited to: Gyeongsang National Univ. Downloaded on March 14,2026 at 12:57:04 UTC from IEEE Xplore. Restrictions apply.
+ROMERO et al.: ACTOR–CRITIC MODEL PREDICTIVE CONTROL                                                                                                     675
+
+
+
+       empirical finding, obtained for the task of stabilizing a                crafted by hand by an expert, and the hyperparameters need to be
+       quadrotor system around hover, establishes a previously                  tuned at deployment time [48], [49]. In addition, in most MPC se-
+       unknown fact, that there is a concrete relationship between              tups [7], [9], [50], [51], [52], [53], [54], the high-level task is first
+       what the critic learns and the optimization landscape of the             converted into a reference trajectory (planning) and then tracked
+       solver. This result not only provides a deeper understand-               by a controller (control). This decomposition of the problem into
+       ing of the interplay between the RL value and the MPC                    these distinct layers is greatly favored by the MPC methodology,
+       cost functions within the AC-MPC framework, but also                     largely due to the differentiability and continuity requirement of
+       opens a path toward a deeper understanding of this type                  optimal control’s cost functions. The cost function is shaped to
+       of controllers.                                                          achieve accurate trajectory tracking and is decoupled from (and
+   3) Exploration analysis: We show that after optimizing                       usually unrelated to) the high-level task objective. As a result,
+       hyperparameters, specifically exploration, AC-MPC can                    the hierarchical separation of the information between two com-
+       leverage the prior knowledge included in the quadrotor                   ponents leads to systems that can become erratic in the presence
+       dynamics to achieve better training performance than AC-                 of unmodeled dynamics. In practice, a series of conservative
+       MLP on the drone racing task.                                            assumptions or approximations are required to counteract model
+   4) A broad set of ablations and additional comparisons:                      mismatches and maintain controllability, resulting in controllers
+       (i) we conduct an experiment where we show that, for                     that are no longer optimal [14], [15], [16].
+       the task of flying a quadrotor through a race track, AC-                    Another promising model-based direction for addressing
+       MPC is more robust to dynamic parameter changes than                     complex control challenges is sampling-based MPC algo-
+       the AC-MLP baseline without the need of retraining the                   rithms [55], [56], [57], [58], which are designed to handle
+       policy, keeping high success rates for variations in the                 intricate, nondifferentiable cost functions and general nonlinear
+       quadrotor’s mass, XY inertia, and body rate limits. This                 dynamics. These algorithms integrate system dynamics – either
+       improved robustness is attributed to the differentiable                  known or learned – into the model predictive path integral
+       MPC’s access to the quadrotor’s dynamics. These results                  (MPPI) control framework, optimizing control in real-time. A
+       highlight ACMPC’s ability to cope with dynamics un-                      key feature of sampling-based MPC is the ability to generate
+       certainty, which is of paramount importance when test-                   a large number of control samples on-the-fly, often leverag-
+       ing in the extremely challenging real-world drone racing                 ing parallel computation via graphics processing units (GPUs).
+       benchmark. (ii) We conduct an extra empirical analysis                   However, implementing sampling-based MPC on embedded
+       where we compare the training performance of our archi-                  systems poses significant challenges, as it tends to be both
+       tecture in the drone racing task for the choice of three                 computationally demanding and memory-intensive.
+       different matrix representations: Diagonal, Cholesky, and                   RL in robotics: RL has risen as an attractive alternative to
+       Full Matrix. (iii) We have added an additional comparison                conventional controller design, achieving impressive perfor-
+       with an adaptive state-of-the-art L1-MPC controller. This                mance that goes beyond model-based control in a variety of do-
+       comparison with a robust controller strategy in the cases                mains [20], [22], [59], [60], [61], [62]. RL optimizes a controller
+       where we show the benefits of our architecture to out of                 using sampled data and revcan easily handle nondifferentiable
+       distribution behavior helps understanding the difficulty of              models and sparse objectives, manifesting great flexibility in
+       the task and puts our results into a new perspective.                    controller design. Compared to model-based optimal control,
+   5) Extended real-world validation: We demonstrate in both                    RL has a number of key advantages: most importantly, RL
+       simulation and real-world experiments that the proposed                  can optimize the performance objective of the task directly,
+       AC-MPC achieves superhuman performance in the ex-                        removing the need for explicit intermediate representations, such
+       tremely challenging task of drone racing, attaining speeds               as trajectories. Moreover, RL can solve complex tasks from raw,
+       of up to 21 m/s on a real quadrotor platform. These                      high-dimensional sensory input, without the need of a specific
+       results are on par with state-of-the-art model-free RL and               metric state [14]. However, RL is still far from reaching the
+       highlight that the strengths of AC-MPC do not come at                    level of robustness and generalizability of model-based control
+       the expense of performance.                                              approaches when deployed in the real world, due to its brittleness
+   6) Source code: We open source the AC-MPC module: https:                     when deployed in situations outside of the training distribution,
+       //github.com/uzh-rpg/acmpc_public                                        and its lack of guarantees [25]. Model-free methods generally
+   The AC-MPC architecture not only advances the integration                    use black-box optimization methods and do not exploit the
+of RL and MPC, but also offers practical improvements in                        first-order gradient through the dynamics, thus cannot leverage
+out-of-distribution behavior, training efficiency, and real-world               the full advantage of the prior knowledge.
+applicability in the context of agile quadrotor flight, contributing               Combinations of MPC and learning: Several methods have
+to the development of more robust and efficient control systems.                been developed to learn cost functions for MPC [63], [64], [65],
+                                                                                [66], [67], [68], [69], [70], [71], [72], [73], [74], [75], [76],
+                                                                                dynamics models for MPC [42], [77], [78], [79], [80], [81],
+                         II. RELATED WORK                                       [82], or both simultaneously [31], [43], [83], [84], [85], [86],
+  MPC in robotics: MPC has had an enormous success in                           [87], [88], [89], [90], [91]. For example, in [64], a policy search
+robotic applications over the last decades [9], [10], [11], [32],               strategy is adopted that allows for learning the hyperparameters
+[33], [34], [35], [36], [37], [38], [39], [40], [41], [42], [43], [44],         of a loss function for complex agile flight tasks. On the other
+[45], [46], [47]. However, often the cost function needs to be                  hand, the works in [42] and [63] use Bayesian Optimization to
+       Authorized licensed use limited to: Gyeongsang National Univ. Downloaded on March 14,2026 at 12:57:04 UTC from IEEE Xplore. Restrictions apply.
+676                                                                                                        IEEE TRANSACTIONS ON ROBOTICS, VOL. 42, 2026
+
+
+
+tune the hyperparameters and dynamics of MPC controllers for                    driving the actuators to saturation. After this and because of this
+different tasks such as car racing. Similarly, Sacks et al. [71] pro-           lack of optimality, the first time-optimal flight planner was de-
+posed a new method called Deep Model Predictive Optimization                    veloped [9]. However, the trajectories that were generated using
+(DMPO) that learns the update rule of an MPPI controller using                  this planner, although they resulted in the lowest time possible,
+RL. They evaluate their algorithm on a real quadrotor platform                  could not be tracked in the real hardware because the commands
+and outperform state-of-the-art MPPI algorithms.                                would be in saturation almost all of the time, and any model
+   Recent model-based RL approaches integrate MPC-like com-                     mistmatch, small disturbance, or state estimation error would
+ponents either during policy learning [92], [93] or by using                    drive the system to crash due to the lack of control authority in
+explicit MPC-based policies [83], [94], [95], [96]. Many of these               saturation. To allow control authority to be able to deploy the
+methods learn a dynamics model and use it to perform MPC at                     system, the authors needed to be extremely conservative with
+inference time. The latter step is either done via random shoot-                the planner, reducing the maximum thrust that the quadrotor
+ing [94], the cross-entropy method [95], [97], or a combination                 was able to generate by up to 30%, resulting in final, real-world
+of these methods with a learned critic [83], [98].                              lap times that were not competitive with best human pilots. As a
+   Alternatively, approaches leveraging differentiability through               response to this, a new model-based approach, model predictive
+optimizers have been on the rise. For example, for tuning                       contouring control [10], [43] was developed, which was able
+linear controllers by getting the analytic gradients [99], for                  to achieve better lap times than previous approaches. However,
+differentiating through an optimization problem for planning the                this approach needed to be tuned by a human in the real-world,
+trajectory for a legged robot [100], or for creating a differentiable           resulting in extremely long tuning times, including tuning of
+prediction, planning, and controller pipeline for autonomous                    parameters that govern the tradeoff between path progress max-
+vehicles [101], or for moving horizon estimation [102].                         imization and contouring error minimization. These parameters
+   On this same direction, MPC with differentiable optimiza-                    need to be tuned in the physical world for every different track.
+tion [31], [103], [104], [105] proposed to learn the cost or dy-                This approach became the state of the art of model-based drone
+namics of a controller end-to-end. In particular, Amos et al. [31]              racing, after many years of development. In a follow up publica-
+was able to recover the tuning hyperparameters of an MPC via                    tion [14], the authors extensively compared the best MPC and
+imitation learning for nonlinear, low-dimensional dynamics –                    RL approaches for drone racing, showing that RL approach can
+such as cartpole and inverted pendulum – by backpropagating                     achieve superhuman lap times with high success rate in the real
+through the MPC itself. Later, Xiao et al. [106] augmented the                  world and with significantly less engineering effort.
+cost function of a nominal MPC with a learned cost that uses the                   The history of the field demonstrates that achieving robust,
+gradient through the optimizer for the task of navigating around                superhuman performance in drone racing requires overcoming
+humans. To train this learned cost, they also learn from demon-                 significant real-world robotic challenges. Therefore, we believe
+strations. Until [30], all these approaches were only demon-                    drone racing stands as a deeply challenging benchmark, per-
+strated in the context of imitation learning. While imitation                   fectly suited for validating advanced control algorithms.
+learning is effective, its heavy reliance on expert demonstrations                 Our publication aims to close the gap and show that when
+is a burden. This dependence prevents exploration, potentially                  using our architecture, an MPC controller can be synthesized
+inhibiting its broader capabilities.                                            that achieves the same performance, same success rates in the
+   In [30], we address this issue by leveraging the advantages of               real world and better out-of-distribution behavior than an RL
+both differentiable MPC and model-free RL. By equipping the                     controller in this extremely challenging benchmark.
+actor with a differentiable MPC, our approach provides the agent
+with online replanning capabilities and with prior knowledge,                                             III. METHODOLOGY
+which is a significant advantage over model-free RL, where the
+                                                                                  In this section, we first present preliminaries about model-
+actor is a randomly initialized feedforward neural network. Un-
+                                                                                based control and RL, and then introduce our method.
+like conventional MPC, our approach benefits from RL training
+techniques like domain randomization, flexibly allowing for the
+optimization of intricate objectives through iterative exploration              A. Preliminaries
+and refinement.                                                                    Consider the discrete-time dynamic system with continuous
+   Real-World Drone Racing as a benchmark: Controlling a real                   state and input spaces, xk ∈ X and uk ∈ U , respectively. Let us
+world robot at the limits of handling is extremely hard, more                   denote the time discretized evolution of the system f : X × U →
+so when dealing with an inherently unstable system such as a                    X such that xk+1 = f (xk , uk ), where the sub-index k is used
+quadrotor. In order to show how challenging real-world drone                    to denote states and inputs at time tk . We consider the general
+racing is, in this paragraph, we chronologically go through the                 task of finding a control policy π(x), which maps the current
+developments in autonomous drone racing over the years. We                      state to the optimal input, π : X → U , such that the cost function
+start with polynomial trajectories being tracked by a tracking                  J : X → R+ is minimized
+MPC controller, in the AlphaPilot [8], [107] competition. Both
+winning and second place used classical methods to generate                           π(x) = argminu              J(x)
+polynomial minimum snap trajectories that could be tracked us-                                  subject to        x0 = x, xk+1 = f (xk , uk )
+ing a geometric or a MPC controller. However, these trajectories
+did not result in time optimal performance, since they were not                                                   uk ∈ U                                (1)
+
+
+      Authorized licensed use limited to: Gyeongsang National Univ. Downloaded on March 14,2026 at 12:57:04 UTC from IEEE Xplore. Restrictions apply.
+ROMERO et al.: ACTOR–CRITIC MODEL PREDICTIVE CONTROL                                                                                                    677
+
+
+
+where k ranges from 0 to N for xk and from 0 to N − 1 for uk .                 that must be addressed for successful implementation. One of
+In the following sections, we will go through different ways in                the primary caveats is that the stage cost l(xk , uk ) in most tasks
+which J(x) can be chosen.                                                      tends to be sparse and nondifferentiable, which complicates the
+                                                                               formulation of (3). For example, in tasks with discontinuous
+B. Tracking MPC                                                                behavior (e.g., switching between different modes, dealing with
+                                                                               contact forces, or dealing with agent crashes), it is generally
+   One of the primary uses of MPC is to control a dynamical
+                                                                               difficult to find a cost function that is differentiable.
+system’s behavior such that it closely follows a precomputed
+reference trajectory. This is known as trajectory tracking, and the
+corresponding MPC formulation is referred to as tracking MPC.                  D. General Quadratic MPC Formulation
+In tracking MPC approaches [108], [109], [110], the objective                     In most MPC approaches, there is a need of 1) an explicit
+J(x) is to minimize a quadratic penalty on the error between                   manual selection of a differentiable cost function that properly
+the predicted states and inputs, and a given dynamically feasible              encodes the end task, and 2) hyperparameter tuning. As men-
+reference xk,ref and uk,ref . Consequently, the cost function J(x)             tioned in Section III-B, in the case of a standard tracking MPC
+in problem (1) is substituted by                                               this encoding is done through planning, by finding a dynamically
+                  N
+                   −1                                                         feasible reference trajectory that translates the task into suitable
+    JMPC (x) =           Δxk 2Q + Δuk 2R + ΔxN 2P                (2)     cost function coefficients for every time step. For economic
+                  k=0                                                          MPC (see Section III-C), recent research has been going in the
+                                                                               direction of using data to approximate the cost function [115],
+where Δxk = xk − xk,ref , Δuk = uk − uk,ref , and where
+                                                                               or making it computationally tractable by transforming it to a
+Q  0, R  0 and P  0 are the state, input, and final state
+                                                                               quadratic program using the Hessian [116], [117].
+weighting matrices. The norms of the form  · 2A represent the
+                                                                                  However, these approaches present two main drawbacks; 1)
+weighted Euclidean inner product v2A = v T Av.
+                                                                               hand-crafting a dense, differentiable cost function can be diffi-
+   This formulation relies on the fact that a feasible reference
+                                                                               cult for a general task, and ii) even if this cost function is found,
+xk,ref , uk,ref is accessible for N time steps in the horizon.
+                                                                               extra effort needs to be spent in fine tuning the hyperparameters
+Searching for this reference trajectory is often referred to as
+                                                                               for real-world deployment. More generally, optimization-based
+planning, which, depending on the application, can be both com-
+                                                                               architectures such as MPC need to run in real-time when de-
+putationally intensive and complex, particularly in scenarios in-
+                                                                               ployment in the real world is desired. As a result, the underlying
+volving complex dynamics or cluttered environments [9], [111],
+                                                                               optimization problem is often simplified by approximating the
+[112]. In many cases, solving the planning problem becomes the
+                                                                               original nonlinear formulation and converting it into a Quadratic
+bottleneck in real-time applications due to high computational
+                                                                               Program (QP) suitable for the real-time iteration (RTI) [118],
+requirements and the need for precise system models.
+                                                                               [119], [120] scheme to ensure computational tractability. A
+   The tracking MPC formulation also relies on the assumption
+                                                                               general quadratic cost function can be written as
+that a trajectory represents a well-posed, quadratic proxy ob-
+jective for solving the end task. While this assumption holds                                         N
+                                                                                                           T                     
+                                                                                                          xk            xk          xk
+for many practical use cases, it becomes limiting in situations                          JQP (x) =                Qk          + pk        .      (4)
+where the system operates near its performance limits, such as                                       k=0
+                                                                                                           u k           u k         u k
+aggressive maneuvers or high-speed tasks, where the trajectory
+                                                                               Instead of manually designing a complex, nonlinear cost func-
+may no longer serve as an effective proxy. In such cases, tracking
+                                                                               tion that would subsequently require approximation, we propose
+a optimal reference in the real world can result in suboptimal
+                                                                               to learn the final quadratic approximation directly. In this article,
+performance or even task failure [14].
+                                                                               we propose to directly search for the matrix coefficients of (4)
+                                                                               (i.e., Qk and pk ) using RL and differentiable MPC [31]. This
+C. Economic MPC
+                                                                               approach allows the RL agent to discover the most effective
+   To overcome these limitations, Economic MPC directly in-                    quadratic representation of the high-level task objective. By do-
+corporates the task objective into the optimization problem,                   ing so, we can encode the task using a general, nondifferentiable
+eliminating the need for a predefined reference trajectory. This               reward function while simultaneously producing a controller
+fundamental difference allows for a more flexible cost function                that is already computationally tractable, ready for real-time
+design, enabling the controller to be tailored to the specific                 deployment without further approximations.
+economic objectives of the task [113], [114]
+                                    N
+                                     −1                                       E. Actor–Critic RL
+                    JEMPC (x) =            l(xk , uk )                 (3)        RL problems are often framed within the Markov Deci-
+                                    k=0
+                                                                               sion Process (MDP) formalism, which provides a structured
+where l(xk , uk ) is directly the stage cost. This stage cost is               approach for modeling decision-making problems. An MDP
+generally designed to optimize sparse metrics, such as energy                  is defined by the tuple (S, A, P, R, γ), where S is the set of
+consumption, efficiency, or success rate.                                      possible states, A is the set of possible actions, P (sk+1 |sk , ak ) is
+  While economic MPC offers advantages in terms of flexibility                 the state transition probability, R(sk , ak ) is the reward function,
+with respect to task design, it also presents several challenges               and γ ∈ [0, 1) is the discount factor. The objective in an MDP
+
+      Authorized licensed use limited to: Gyeongsang National Univ. Downloaded on March 14,2026 at 12:57:04 UTC from IEEE Xplore. Restrictions apply.
+678                                                                                                          IEEE TRANSACTIONS ON ROBOTICS, VOL. 42, 2026
+
+
+
+is to find a policy π that maximizes the expected cumulative                      Algorithm 1: Actor-Critic Model Predictive Control.
+reward over time. Within the context of Problem (1), and when                      Input: initial neural cost map, initial value function V
+the state transition function is deterministic, it is equivalent to the            for i = 0, 1, 2, · · · do
+system dynamics f (xk , uk ), where in this case the observation                     Collect set of trajectories Di {τ } with
+sk is directly the state xk and the action ak is directly the control                  uk ∼ N {diffMPC(xk , Q(sk ), p(sk )), Σ}
+input uk .                                                                           Compute reward-to-go R̂k
+   To solve such problems, a common approach in RL is to                             Compute advantage estimates Âk based on value
+optimize directly the policy πθ by using the policy gradient. The                      function V (sk )
+policy πθ is parameterized by θ, typically the weights of a neural                   Update the cost map by policy gradient (e.g., PPO-clip
+network. The goal is to adjust these parameters to maximize the                        objective) and diffMPC backward [31]
+expected return, defined in the infinite-horizon case as                             Fit value function by regression on mean-squared error
+                                   ∞
+                                                                                  Output: Learned cost map.
+                        R(τ ) =          γ k r(sk , ak )                  (5)
+                                   k=0
+                                                                                 with respect to training a standard multilayer perceptron (MLP)
+where τ denotes a trajectory, r(sk , ak ) the reward function, and
+                                                                                 end-to-end is that the final module of the actor is a model-based
+γ ∈ [0, 1) is a discount factor that discounts future rewards.
+                                                                                 MPC controller
+Unlike real-time optimization methods like MPC, RL can han-
+dle nondifferentiable, nonderivable models and easily optimize                                uk ∼ N {diffMPC(xk , Q(sk ), p(sk )), Σ}                       (7)
+sparse rewards. In addition, policy gradient optimization is typ-
+                                                                                 and therefore it retains its generalizability to out-of-distribution
+ically performed offline through interactions with simulation.
+                                                                                 situations. The model-based controller placed after the last layer
+Once trained, the policy πθ enables the computation of control
+                                                                                 of the actor network ensures that the commands are always
+signals by simply evaluating the function a∗ = πθ (sk ) at each
+                                                                                 feasible for the dynamics at hand, and that they respect the
+time step, reducing the computational complexity during de-
+                                                                                 system constraints. This differentiable MPC supports control
+ployment. For Actor–Critic RL, the key idea is to simultaneously
+                                                                                 input constraints but not state constraints, which is why we
+learn a state-value function Vω (s) and learn a policy function
+                                                                                 add uk ∈ U in (1). To allow for exploration, during training the
+πθ , where the value function (Critic) and policy (Actor) are
+                                                                                 control inputs are sampled from a Gaussian distribution where
+parameterized by ω and θ separately. The policy is updated via
+                                                                                 the mean is the output of the MPC block, and the variance is
+policy gradient [121]
+                                                                                 controlled by the PPO algorithm. However, during deployment
+                         N    T
+                  1                                                            the output from the MPC is used directly on the system with-
+      ∇θ J(πθ ) =       ∇θ log πθ (aik |sik )Aω (sik , aik )              (6)    out further sampling, retaining all properties of a model-based
+                  N i=1
+                             k=1                                                 controller. Algorithm 1 shows a high-level description of the
+where A(sk , ak ) = r(sk , ak ) + γVω (sk+1 ) − Vω (sk ) is the ad-              AC-MPC algorithm.
+vantage function used as a baseline. In a standard actor–critic
+method, the policy is a stochastic representation where ak =                     G. Neural Cost Map
+πθ (sk ) is the mean of a Gaussian distribution.                                    The cost function for the MPC architecture presented in
+                                                                                 Section III-F is learned as a neural network, depicted in Fig. 1
+F. Actor–Critic MPC                                                              as Cost Map. Several adaptations to the system are needed in
+                                                                                 order to properly interface the neural network architecture with
+   This article proposes an Actor–Critic MPC controller ar-
+                                                                                 the optimization problem. First, we construct the matrix Q(sk )
+chitecture where the MPC is differentiable [31] and the cost
+                                                                                 and vector p(sk ) as follows:
+function is learned end-to-end using RL. The MPC block is
+introduced as the differentiable module of the actor in an actor–                     Q(sk ) = diag(Q(sk )x1 , . . . , R(sk )u1 , . . . )
+critic pipeline that uses the proximal policy optimization (PPO)
+                                                                                       p(sk ) = [p(sk )x1 , . . . , p(sk )u1 , . . . ]   ∀k ∈ 0, . . . , T
+algorithm [122]. Our architecture is shown in Fig. 1. In contrast
+to previous work [64], where the MPC is taken as a black-box                     where x1 , . . . and u1 , . . . are the states and inputs to the system,
+controller and the gradient is sampled, in our case the gradient                 respectively, and Q(sk ) and p(sk ) are the learnable parameters,
+of the cost function with respect to the solution is analytically                interface from the neural network to the optimization problem.
+computed and propagated using a differentiable MPC [31].                            The purpose of the diagonalization of the Q matrix is to
+Therefore, for every backward and forward pass of the actor                      reduce the dimensionality of the learnable parameter space.
+network, we need to solve an optimization problem. Instead                       Therefore, the dimensionality of the output dimension of the
+of resorting to task-specific engineering of the cost function,                  Cost Map is 2T (nstate + ninput ). In order to ensure the positive
+we propose a neural cost map where Qk and pk terms are the                       semi-definiteness of the Q matrix and the positive definiteness
+output of the neural network layers preceding the differentiable                 of the R matrix, a lower bound on the value of these coefficients
+MPC block. This allows us to encode the end task directly as                     needs to be set. To this end, the last layer of the neural cost map
+a reward function, which is then trainable end-to-end using                      has been chosen to be a sigmoid, which allows for upper and
+the PPO training scheme. The main benefit of this approach                       lower bounds on the output value. These lower and upper limits
+
+       Authorized licensed use limited to: Gyeongsang National Univ. Downloaded on March 14,2026 at 12:57:04 UTC from IEEE Xplore. Restrictions apply.
+ROMERO et al.: ACTOR–CRITIC MODEL PREDICTIVE CONTROL                                                                                                         679
+
+
+
+are chosen equal for Q and p, of 0.1 and 100000.0, respectively.                     Algorithm 2: Actor-Critic Model Predictive Control With
+Therefore, the final neural cost map consists of two hidden layers                   Model-Predictive Value Expansion.
+of width 512 with ReLUs in between and a sigmoid nonlinearity                         Input: initial neural cost map, initial value function V
+at the end. The critic network consists also of two hidden layers                     for i = 0, 1, 2, · · · do
+of width 512 and ReLUs. The output of the critic network is a                           Collect set of trajectories and predictions Di {τ } with
+scalar.                                                                                xk:k+H , uk:k+H ∼ N {diffMPC(xk , Q(sk ), p(sk )), Σ}
+                                                                                        Compute reward-to-go R̂k and value targets using TD(λ)
+H. MPVE                                                                                 Compute advantage estimates Âk based on value
+   At each control iteration, the differentiable MPC block in                             function V (sk )
+Fig. 1 outputs a sequence of optimal states and actions, of which                       Compute reward-to-go for predictions R̂k:k+H and
+only the first action u0 is applied to the system. The remain-                            value targets using TD k-trick
+ing predicted states and actions, although currently discarded,                         Update the cost map by policy gradient (e.g., PPO-clip
+contain valuable information. They can be used to improve the                             objective) and diffMPC backward [31]
+learning of the value function.                                                         Fit value function by regression on mean-squared error
+   In this section, we propose an extension to our algorithm                              using a sum of the TD(λ) value loss and (9)
+that makes use of the predictions of the MPC to improve the                           Output: Learned cost map
+quality of the value function estimate. We call this extension
+MPVE. This idea is inspired by the model-based value expansion
+algorithm proposed by [123], which uses the extra predicted                         After including (9) in algorithm 1, this is how the algorithm
+rollouts using a learned model to improve the value function                        changes.
+estimate. Assuming that our model is accurate up to H horizon
+steps and that we have access to the reward of the predictions,                                           IV. EXPERIMENTAL SETUP
+one can define the H-Step MPVE as
+                                                                                       This section presents a set of experiments, both in simulation
+                               H−1
+                                                                                   and the real world. All experiments in this work are conducted on
+                   V̂H (s) =          γ t r̂ + γ H V̂ (sH )                   (8)   a quadrotor system, both in simulation and on a real platform.
+                                t=0                                                 To showcase the capabilities of our method, we have chosen
+                                                                                    the task of agile flight through a series of gates in different
+where r̂ represents the predicted rewards, and V̂ (sH ) is the                      configurations: horizontal, vertical, circular, and SplitS. In addi-
+estimated value of the predicted state at the end of the horizon                    tion, to show the sim-to-real transfer capabilities, both circular
+H.                                                                                  and SplitS tracks are deployed in the real world. We train in a
+   However, as explained in [123], a challenge that arises is                       simple simulator in order to speed up the training and evaluate
+the distribution mismatch. This occurs when the distribution of                     in BEM, a high-fidelity simulator [124], which has a higher
+states seen during training differs from the distribution of states                 level of similarity in terms of aerodynamics with the real world.
+encountered when using the predictions from the differentiable                      The quadrotor platform’s dynamics are the same as in [14].
+MPC. This mismatch can degrade performance, as highlighted                          For every different task, the policies are retrained from scratch.
+in [123].                                                                           Last, all experiments have been conducted using a modification
+   To address this issue, the work in [123] incorporates the                        of the Flightmare software package [125] for the quadrotor
+TD k-trick, an approach designed to mitigate the distribution                       environment and PPO implementation and Agilicious [126] for
+mismatch problem by aligning the training distribution with                         the simulation and deployment.
+the prediction’s distribution over multiple steps. The TD k-trick
+involves training the value function on k-step returns, which
+helps ensure the training and prediction distributions are closely                  A. Observations, Actions, and Rewards
+aligned.                                                                               1) Observation Space: All tasks presented in our manuscript
+   Therefore, the expression for the value loss is extended                         are quadrotor tasks, and the observation space has been tailored
+       H−1
+                             H−1                                  2             for such. The observation space for the quadrotor does not
+    1                         
+                                          k−t          H                            change, and consists of two main parts: the quadrotor’s state
+                 V (ŝt ) −           γ         r̂k + γ V̂ (ŝH )         .   (9)   observation oquad          and the race track observation otrack
+    H t=0                                                                                              t                                            t    . We de-
+                               k=t                                                                                                                            12
+                                                                                    fine the quadrotor’s state observation as oquad      t   = [v t , R t] ∈ R ,
+This additional term encourages the value function to be con-                       which corresponds to the quadrotor’s linear velocity and rota-
+sistent with the MPC predictions across multiple time steps,                        tion matrix. We define the track observation vector as otrack          t   =
+thereby improving the overall accuracy of the value estimates.                      [δp1 , . . . , δpi , · · · ], i ∈ [1, . . . , G], where δpi ∈ R12 denotes
+   We incorporate (9) into our original algorithm (see Algo-                        the relative position between the vehicle center and the four
+rithm 1), to create a more robust learning process that effectively                 corners of the next target gate i or the relative difference in
+utilizes the predictive power of the MPC. This integration allows                   corner distance between two consecutive gates. Here, G ∈ Z+
+for better exploitation of the model’s predictions, potentially                     represents the total number of future gates. This formulation
+leading to faster convergence and improved policy performance.                      of the track observation allows us to incorporate an arbitrary
+
+      Authorized licensed use limited to: Gyeongsang National Univ. Downloaded on March 14,2026 at 12:57:04 UTC from IEEE Xplore. Restrictions apply.
+680                                                                                                          IEEE TRANSACTIONS ON ROBOTICS, VOL. 42, 2026
+
+
+
+number of future gates into the observation. We use G = 2,
+meaning that we observe the four corners of the next two target
+gates. We normalize the observation by calculating the mean
+and standard deviation of the input observations at each training
+iteration.
+   2) Action Space: Previous work has demonstrated the high
+importance of the action space choice for learning and sim-
+to-real transfer of robot control policies [127], [128]. In our
+work, the quadrotor control input modality is collective thrust
+and body rates, which was previously shown to perform best
+for agile flight [127]. This action is expressed as a 4-D vector
+a = [c, ωx , ωy , ωz ] ∈ R4 , representing mass-normalized thrust               Fig. 2. AC-MPC applied to agile quadrotor flight: velocity profiles and cor-
+                                                                                responding value function plots. The left side illustrates horizontal flight, while
+and body rates, in each axis separately. Even if the MPC block                  the right side shows vertical flight. In the value function plots, areas with high
+uses a model that limits the actuation at the single rotor thrust               values (depicted in yellow) indicate regions with the highest expected returns.
+level, collective thrust and body rates are computed from these                 The MPC predictions are shown as black Xs.
+and applied to the system. This ensures that the computed inputs
+are feasible for the model of the platform.
+   3) Rewards: For all our experiments, the reward is tailored                  its positive body Z direction. When flying fast downward, the
+for quadrotor racing through gates. As such, one reward term                    fastest solution is to pitch and roll the drone as soon as possible,
+in common is the gate progress reward, which encourages fast                    direct the thrust downward, and only then command positive
+flight through the track. The objective is to directly maximize                 thrust [9]. However, many approaches are prone to get stuck
+progress toward the center of the next gate. Once the current                   in a local optimum [10], where the commanded thrust is zero
+gate is passed, the target gate switches to the next one. At each               and the platform gets pulled only by gravity. Fig. 2 shows the
+simulation time step k, the reward function is defined by                       simulation results of deploying the proposed approach, which
+                                                                                was trained in the horizontal and vertical tracks (left and right
+  r(k) =                                                                        side of Fig. 2, respectively). We show velocity profiles and
+  ⎧                                                                             value-function profiles. The value-function profiles have been
+  ⎪
+  ⎪ −10.0,                                            if collision,
+  ⎪
+  ⎨+10.0,                                                                       computed by selecting a state of the platform in the trajectory
+                                                      if gate passed,           and modifying only the position while keeping the rest of the
+  ⎪+10.0,
+  ⎪                                                   if race finished,         states fixed. For the horizontal track, we sweep only the XY
+  ⎪
+  ⎩
+    gk − pk−1  − gk − pk  − bω k ,              otherwise                 positions, and for the vertical track, the XZ positions. In addition,
+                                                                     (10)       10 MPC predictions are shown and marked with Xs. In these
+                                                                                value function plots, areas with high values (in yellow) indicate
+where gk represents the target gate center, and pk and pk−1                     regions with high expected returns.
+are the vehicle positions at the current and previous time steps,                  In Fig. 2 and in the supplementary video, one can observe the
+respectively. Here, bω k  is a penalty on the body rate multiplied            evolution of the value function over time. Given the sparse nature
+by a coefficient b = 0.01.                                                      of the reward terms (see Section IV-A3), one can observe that
+                                                                                when a gate is successfully passed, the region of high rewards
+                              V. RESULTS                                        quickly shifts to guide the drone toward the next gate. This can
+   We perform multiple experiments to better understand dif-                    be interpreted as a form of discrete mode switching enabled by
+ferent properties of our proposed approach. Namely, we study                    the neural network cost map. Such mode-switching behavior is a
+1) AC-MPC’s performance on multiple drone racing tasks and                      challenging feat to accomplish using traditional MPC pipelines.
+its sample efficiency in comparison to AC-MLP policies, 2)                      The intuition behind this is that the critic is able to learn long-
+the choice of matrix parameterization, 3) its behavior against                  term predictions, while the model-predictive controller focuses
+unknown external disturbances, 4) its robustness to changes                     on the short-term ones, effectively incorporating two time scales.
+in dynamic parameters, 5) the benefits of the MPVE, 6) the                         In addition, we train our approach on a challenging track
+interpretability properties of AC-MPC, 7) its sensitivity to ex-                known as the SplitS track. Designed by a professional drone
+ploration hyperparameters, 8) its real-world deployment. Each                   racing pilot, this track is distinguished by its highly demanding
+aspect corresponds to a different research question that we                     SplitS maneuver, where the drone must navigate through two
+address in each of the following sections.                                      gates placed directly above one another successively. This track
+                                                                                was used in previous research as a benchmark, namely [9], [10],
+                                                                                [11], [14], [24].
+A. Does Our Method Improve Performance and Sample
+                                                                                   In Fig. 3, we show the collective thrust commands of both
+Efficiency?                                                                     approaches, AC-MLP versus AC-MPC. In this figure, one can
+  We start with horizontal and vertical flight through gates.                   notice how the AC-MPC can achieve saturation in a consistent
+The vertical task can show if the approach is able to find a                    way, while the AC-MLP approach also saturates but in a more
+solution that lies directly in the singularity of the input space               irregular fashion. This indicates that the MPC module within
+of the platform since the platform can only generate thrust in                  the AC-MPC framework, which includes explicit knowledge
+      Authorized licensed use limited to: Gyeongsang National Univ. Downloaded on March 14,2026 at 12:57:04 UTC from IEEE Xplore. Restrictions apply.
+ROMERO et al.: ACTOR–CRITIC MODEL PREDICTIVE CONTROL                                                                                                      681
+
+
+
+                                                                                        In conclusion, the results presented in this section show that
+                                                                                     our method improves both performance and sample efficiency.
+                                                                                     By comparing AC-MPC against AC-MLP across various track
+                                                                                     complexities, and after hyperparameter tuning, we have demon-
+                                                                                     strated that AC-MPC can achieve superior performance and sam-
+                                                                                     ple efficiency, especially in challenging tasks like the Vertical
+                                                                                     and SplitS tracks (see Fig. 5). This improvement is attributed
+                                                                                     to AC-MPC’s ability to effectively leverage prior knowledge of
+                                                                                     the system dynamics through the embedded MPC module (see
+                                                                                     Fig. 3). These findings suggest that incorporating model-based
+                                                                                     control elements into RL frameworks offers a promising direc-
+                                                                                     tion for future research.
+
+
+                                                                                     B. Does the Choice of Diagonal Matrix Affect Performance?
+                                                                                        In this section, we investigate a critical design choice within
+Fig. 3. Evolution of the collective thrust command over time for both AC-
+MLP and AC-MPC during trials on the SplitS track. The figure demonstrates            our framework: the structure of the learnable cost matrix. Our
+AC-MPC’s ability to effectively utilize control input saturation due to its access   goal is to empirically demonstrate that constraining this matrix
+to the system dynamics and control constraints. In contrast, AC-MLP exhibits         to be diagonal does not negatively impact performance. On the
+less consistent saturation behavior.
+                                                                                     contrary, we aim to show that this simplification makes the
+                                                                                     learning problem more tractable.
+                                                                                        To this end, we compare our standard diagonal representa-
+                                                                                     tion of the quadratic cost matrix Q against two more complex
+                                                                                     alternatives: a full matrix decomposition and a Cholesky decom-
+                                                                                     position. All three methods produce the positive semi-definite
+                                                                                     matrices required for the optimization problem, but they differ
+                                                                                     in the number of learnable parameters, which directly influences
+                                                                                     the complexity of the learning task.
+                                                                                        For the Cholesky case, the free parameters are the nonzero
+                                                                                     parameters of a triangular matrix A, where the diagonal elements
+Fig. 4. Reward evolution for agile quadrotor flight in the Split-S track. Three      are positive and the rest are free to be positive or negative. In
+different cost map representations are shown: Diagonal, Cholesky and Full            this case, the number of free parameters would be N (N + 1)/2.
+Matrix.
+                                                                                     Similarly, for the full matrix case, the free parameters are all the
+                                                                                     elements of a matrix A, and therefore the number of free param-
+of both platform dynamics and its constraints, effectively and                       eters would be N 2 . In both cases, the matrix Q is parameterized
+consistently utilizes the system’s saturation limits. In contrast,                   as follows:
+the AC-MLP commands are generated directly by a neural net-
+work, resulting in behavior that is comparatively less consistent                                                Q = AAT
+and less aligned to the platform’s true limits.
+   In Fig. 5, we can see the reward evolution for AC-MLP when                        This specific formulation is used to ensure that the resulting Q
+compared with AC-MPC. This comparison was conducted after                            matrix is always positive semi-definite, a necessary condition
+optimizing the initial standard deviation hyperparameter for both                    for the stability of the underlying optimization problem.
+approaches and choosing the best result for each. Generally—as                          Following this, we build three different cost map repre-
+we also study in Section V-G—AC-MPC performs better for                              sentations, mapping observations to cost function: Diagonal,
+lower exploration parameters, whereas AC-MLP needs higher                            Cholesky, and Full Matrix. We train the three of them for three
+exploration parameters. Fig. 5 shows that the asymptotic training                    different tracks: Horizontal, Vertical, and SplitS, and track the
+performance and sample efficiency are improved when choosing                         growth of the reward function to measure learning performance.
+AC-MPC, since it is able to leverage the prior information                              As shown in the learning curves in Fig. 4, the agent using the
+encoded in the dynamics within the differentiable MPC. This                          Diagonal representation is the only one capable of learning the
+is particularly evident in the reward evolution observed for the                     required behavior, showing a clear and consistent increase in
+Vertical and SplitS tracks. For simpler tasks, the prior knowl-                      reward across all three tracks. In contrast, for both the Cholesky
+edge introduced in AC-MPC is not strongly advantageous to                            and Full Matrix cases, the network fails to learn within the
+performance. For instance, in the Horizontal track, which is                         same sample budget. We hypothesize that this outcome is a
+relatively simple, the training performance of AC-MLP is on                          direct result of the higher learning difficulty imposed by the
+par with AC-MPC, since the maneuvers that the policy needs                           larger number of parameters in the more complex cost functions.
+to discover to perform the task do not require an elaborate                          This high-dimensional search space likely prevents the learning
+exploration behavior.                                                                algorithm from finding a useful gradient, demonstrating that
+
+        Authorized licensed use limited to: Gyeongsang National Univ. Downloaded on March 14,2026 at 12:57:04 UTC from IEEE Xplore. Restrictions apply.
+682                                                                                                               IEEE TRANSACTIONS ON ROBOTICS, VOL. 42, 2026
+
+
+
+
+Fig. 5. Reward evolution for drone racing in three different tracks, for AC-MLP (for different N values of the horizon, N = 2 and N = 5) and AC-MPC. The
+values have been obtained after optimizing the initial exploration standard deviation for both approaches independently, and then selected the best result from each.
+For Vertical and SplitS tracks, one can observe how the AC-MPC approach is able to leverage its prior knowledge of the system and showcase improved learning.
+For the Horizontal track, because of its simplicity, the leverage of prior knowledge is diluted.
+
+
+
+
+Fig. 6. Baseline comparisons between our AC-MPC, a standard PPO (termed AC-MLP), a standard tracking MPC and a L1-MPC, for the task of agile quadrotor
+flight. (A): Robustness against wind disturbances (vertical track). All policies are trained without disturbances. Black arrows indicate the quadrotor’s attitude. (B):
+Robustness against changes in initial conditions (horizontal track). Trajectories are color-coded, with crashed trajectories in red and successful in blue.
+
+
+
+the constrained and more manageable problem offered by the                                                        TABLE I
+                                                                                       COMPARISON: SUCCESS RATE AND AVERAGE VELOCITY FOR AGILE FLIGHT
+diagonal matrix helps the training.                                                   THROUGH THE HORIZONTAL, VERTICAL. AND VERTICAL WITH WIND TRACKS
+
+
+C. Is Our Approach Robust to External Disturbances?
+   We perform various studies where the standard actor–critic
+PPO architecture [14] (labeled as AC-MLP), a standard tracking
+MPC and a state-of-the-art adaptive L1-MPC [129] controller
+are compared to our approach (labeled as AC-MPC) in terms
+of generalization and robustness to disturbances. Both the AC-
+MLP and AC-MPC approaches are trained with the same condi-
+tions (reward, environment, observation, simulation, etc.). It is
+important to note that since we aim to test for out-of-distribution                  L1-MPC approaches track a time-optimal trajectory obtained
+behavior, the disturbances are not present at training time, only                    from [9].
+during testing. All these evaluations are conducted using the                           In terms of disturbance rejection and out-of-distribution be-
+high-fidelity BEM simulator [124]. Both the MPC and the                              havior, we conduct three ablations, shown in Fig. 6 and Table I).
+
+      Authorized licensed use limited to: Gyeongsang National Univ. Downloaded on March 14,2026 at 12:57:04 UTC from IEEE Xplore. Restrictions apply.
+ROMERO et al.: ACTOR–CRITIC MODEL PREDICTIVE CONTROL                                                                                                         683
+
+
+
+In Fig. 6(a) (and the Vertical Wind column of Table I), we
+simulate a strong wind gust that applies a constant external force
+of 11.5 N (equivalent to 1.5x the weight of the platform). This
+force is applied from z = 10 m to z = 8 m. We can see how
+neither the AC-MLP nor the MPC policies can recover from the
+disturbance and complete the track successfully. The adaptive                   Fig. 7. Success rate against variations of quadrotor’s mass, inertia, and body
+L1-MPC controller is able to overcome the disturbance and pass                  rate limit. Policies are trained in the SplitS track with a nominal value for
+                                                                                these parameters. This nominal value is depicted in red. Then, these policies are
+through the gates with a success rate of 41.66% and an average                  deployed in 64 parallel environments, each environment having slightly different
+speed of 8.69 m/s.                                                              initial position. In the deployment stage, mass, inertia, and body rate limit are
+    On the other hand, AC-MPC achieves a higher success rate                    varied. The success rate is computed as the proportion of trajectories that don’t
+                                                                                have crashes. Because AC-MPC has the dynamics embedded in the network
+and speeds (83.33% and 10.76 m/s, as shown in Table I), and                     architecture, it shows to be more robust to these changes than its AC-MLP
+exhibits more consistency among repetitions. This showcases                     counterpart.
+that incorporating an MPC block enables the system to achieve
+better out of distribution behavior.
+    For the Vertical and Horizontal experiments in Table I, we                  are evaluated across a range of perturbed parameters for both
+simulate 10 000 iterations for each controller where the starting               AC-MLP and AC-MPC. To quantify the robustness of these
+points are uniformly sampled in a cube of 3 m of side length                    policies, we deploy them from 64 different positions, equally
+where the nominal starting point is in the center. In the Hori-                 spread on a cube of 0.5 m of side length. Success is defined as
+zontal case, the results are shown in Fig. 6(b). It is important                the percentage of trajectories that successfully navigate through
+to highlight that during training of AC-MLP and AC-MPC, the                     all gates of the SplitS track. Fig. 7 presents the success rate as a
+initial position was only randomized in a cube of 1 m of side                   function of variations in mass (up to +27%), in XY inertia (up
+length. The successful trajectories are shown in blue in Fig. 6(b),             to ±80%), and body rate limits (up to ±40%).
+while the crashed ones are shown in red. In Table I, we can                        The results demonstrate that the AC-MPC exhibits superior
+observe that the AC-MPC presents a higher success rate than                     generalization to dynamic parameter variations compared to the
+AC-MLP in both experiments. One can also see that AC-MPC                        AC-MLP. This improved robustness is attributed to the incorpo-
+has a higher success rate than both the MPC and the L1-MPC                      ration of a dynamic model within the differentiable MPC block,
+approaches in the Horizontal task, but this is not the case in the              which allows for adjustments in response to perturbed dynamics
+Vertical task. The reason behind this is that in the Vertical task,             during deployment without retraining.
+the MPC and L1-MPC are not able to track the solution that turns
+the drone upside down, therefore resulting in the sub-optimal
+solution of setting all thrusts to near-zero state and dropping                 E. What Do We Gain From MPVE?
+only by the effect of gravity, which results in slower but safer                   In this section, we conduct empirical experiments to evaluate
+behavior. This is evident by looking at the average speed column                the effect of the AC-MPC extended with MPVE algorithm (in-
+in Table I.                                                                     troduced in Section III-H) in terms of training performance. To
+    It is important to clarify that the tracking MPC approaches                 isolate the effect of MPVE and enable clear reward evaluation,
+have difficulties in this task because the trajectories to be tracked           we employ a straightforward hovering task for the drone. Here,
+are time-optimal trajectories. This means that they command                     the drone starts at a random position and orientation within a
+the platform to go from hover to 100% thrust and body rates                     1x1x1 m cube around a designated equilibrium point (0, 0, 5
+commands directly from the start. This makes these trajectories                 m). The objective is to stabilize the drone at this point with
+extremely difficult or impossible to track in the presence of any               zero velocity and a perfectly upright orientation (hover). We
+disturbance or model mismatch.                                                  compare the training performance of AC-MPC-MPVE against
+    These experiments provide empirical evidence showing that                   AC-MLP and AC-MPC. All algorithms are trained with a fixed
+AC-MPC exhibits enhanced performance in handling unfore-                        sample budget of 50 steps, corresponding to roughly 1.25 million
+seen scenarios and facing unknown disturbances, which makes                     samples collected from the environment. For these experiments,
+it less brittle and more robust.                                                the horizon of the differentiable MPC is set to N = 3, and
+                                                                                the MPVE H is set to the same value. Because the MPVE
+                                                                                algorithm primarily affects the learning of the critic, which uses
+D. Is Our Approach Robust to Changes in the Dynamics?                           the Generalized Advantage Estimation (GAE) algorithm [130],
+   Our AC-MPC approach integrates a model-based controller                      we explore the impact of our extension for various values of
+that explicitly accounts for system dynamics, and therefore it                  the temporal difference parameter λ in TD(λ). The parameter
+benefits from the possibility of changing dynamic parameters                    λ determines the tradeoff between using the Bellman error
+without retraining, up to certain extent. The question arises                   and using the Monte-Carlo estimates for the value function
+of whether AC-MPC is less sensitive to dynamic parameters                       approximation. A lower value of λ favors lower variance but
+changes when compared to AC-MLP. To investigate this, we                        higher bias by relying more on immediate rewards, while higher
+conduct a series of experiments in which key dynamic param-                     values reduce bias but increase variance by incorporating more
+eters are systematically varied. Both policies are trained on the               long-term information. To investigate this, we experiment with
+SplitS track using nominal parameter values, after which they                   six different values for λ: 0.0, 0.2, 0.4, 0.6, 0.8, and 1.0. For each
+
+       Authorized licensed use limited to: Gyeongsang National Univ. Downloaded on March 14,2026 at 12:57:04 UTC from IEEE Xplore. Restrictions apply.
+684                                                                                                        IEEE TRANSACTIONS ON ROBOTICS, VOL. 42, 2026
+
+
+
+                                                                                                            TABLE II
+                                                                                            AC-MLP AND AC-MPC TRAINING HYPER-PARAMETERS
+
+
+
+
+Fig. 8. For the quadrotor stabilization task, we show the reward at 50 steps
+of training for AC-MLP, AC-MPC and AC-MPC (MPVE), depending on the λ
+used in the TD(λ). The policies are trained with a sample budget of 50 steps and
+the final reward is recorded, for different values of λ, for both AC-MPC (MPVE)
+and AC-MLP.
+                                                                                                                TABLE III
+                                                                                           TRAINING TIME OF THE TWO ALGORITHMS FOR 2 M STEPS
+
+
+
+
+                                                                                   architectures and empirically gives the most stable learning
+                                                                                   when roll-outs are long and the task demands a large planning
+Fig. 9. Reward evolution for the quadrotor stabilization task, for the cases of    horizon, as is the case in drone racing. As one can see in Fig. 8,
+λ = 0.0 and λ = 0.6, for AC-MLP and for AC-MPC (MPVE).                             as λ approaches one, the returns of all three controllers become
+                                                                                   indistinguishable: with an almost Monte-Carlo target, the critic
+                                                                                   already receives a near-complete estimate of the tail cost, so
+value, we repeat the training process three times with different                   the extra predictions injected by MPVE provide little additional
+random seeds.                                                                      benefit. Table II shows an overview of the hyperparameters used
+   Our results (visualized in Fig. 8) demonstrate that the sample                  for training both AC-MPC and AC-MLP for the rest of the
+efficiency gains achieved by MPVE are more significant for                         article.
+lower lambda values. This can be explained by the way the                             In addition, in Table III, we added the training time difference
+value function leverages data from the rollout buffer. Higher                      between adding MPVE and not adding it. It is important to note
+lambda values incorporate data from a larger portion of the                        that since the actor network is not modified, the inference time
+rollout, increasing the influence of Monte Carlo estimates and                     remains identical for both algorithms.
+diluting the relative impact of the information provided by
+MPVE predictions. In contrast, lower lambda values lead to
+stronger benefits from MPVE. This suggests that our algorithm is                   F. Can We Interpret the Internal Workings of AC-MPC?
+particularly advantageous for scenarios where the value function                      This section investigates a potential connection between the
+is trained with TD(0). This approach is often preferred when                       critic network’s output, V (x), and the learned cost matrix Q(x).
+memory limitations exist (as it avoids storing the entire rollout                  To simplify the analysis, we introduce three key assumptions.
+buffer) or for nonepisodic tasks.                                                  First, we assume that the observations sk are equivalent to the
+   In Fig. 9, we showcase the evolution of the episode returns                     state of the system xk . Second, the reward function is assumed
+for AC-MLP and AC-MPC-MPVE under two different values                              to be quadratic in the state, expressed as r(x) = −xT Qx. This
+of λ and for the same task of drone stabilization. In both settings,               formulation captures the objective of stabilizing the system
+our approach substantially outperforms the baseline in terms of                    around a hover point. And third, we restrict the MPC hori-
+asymptotic performance and sample efficiency, highlighting the                     zon length to T = 2. These assumptions are chosen to create
+benefits of MPVE.                                                                  a simplified, tractable setting that mirrors the structure of a
+   We would like to note that while we modify the value of λ in                    classic Linear Quadratic Regulator (LQR) problem, where the
+this section for the sake of exposing the influence of MPVE, the                   relationship between the value function and the quadratic cost
+value of λ in the rest of the article is kept constant and equal to                is well-understood. While our system remains nonlinear, this
+λ = 0.95. This is a very common choice of λ in general TD(λ)                       setup allows us to isolate and probe the fundamental connection
+
+      Authorized licensed use limited to: Gyeongsang National Univ. Downloaded on March 14,2026 at 12:57:04 UTC from IEEE Xplore. Restrictions apply.
+ROMERO et al.: ACTOR–CRITIC MODEL PREDICTIVE CONTROL                                                                                                     685
+
+
+
+between the critic’s learned value function and the actor’s                    where f (·) represents the system dynamics function, d denotes a
+learned MPC cost.                                                              specific state–action pair, HV is the Hessian of the value function
+   Given the focus on drone dynamics and a stabilization task,                 evaluated at d, ΔV represents the first-order term of the Taylor
+we expect the system to primarily operate near hover states.                   expansion. Because we need to compute the gradient and the
+This implies that the learned value function should also be                    Hessian of the value function composed with the dynamics, here
+approximately quadratic. The central question we aim to address                are the expressions for ΔV and HV
+here is whether a relationship exists between the Hessian (the
+                                                                                                    ∂                              ∂
+matrix containing all second-order partial derivatives) of this                        ΔV =              (V (f (τN −1 ))) =             (V (xN ))
+value function and the learned cost matrix, Q. The general                                      ∂τN −1                         ∂τN −1
+infinite horizon problem for an MPC can be written as                                           ∂V (xN ) ∂xN   ∂V (xN ) ∂f (τN −1 )
+                                 ∞                                                          =                =
+                                                                                                ∂xN ∂τN −1     ∂xN      ∂τN −1
+       π ∗ (x0 ) = argminu             l(xk , uk )
+                                 k=0                                                            ∂V (xN )
+                                                                                            =            AN −1 , BN −1                                  (12)
+                                 N
+                                  −1                    ∞
+                                                                                                ∂xN
+                 = argminu              l(xk , uk ) +          l(xk , uk )     where [AN −1 , BN −1 ] are the matrices associated to the lin-
+                                 k=0                     k=N
+                                                                               earized dynamics at timestep N − 1, and xN = f (τN −1 ),
+                                 N
+                                  −1                                          ∂V (xN )
+                                                                                  ∂xN    is the gradient of the value function with respect to
+                 = argminu              l(xk , uk ) − V ∗ (xN )                its inputs. For HV
+                                 k=0
+                                 N −1
+                                                                                                    ∂
+                                                                                          HV =          (ΔV )
+                 = argminu                           ∗
+                                        l(τk ) − V (f (τN −1 ))                                   ∂τN −1
+                                 k=0                                                                              
+                                                                                                    ∂      ∂V (xN ) ∂f (τN −1 )
+                                                                                                =
+where τk = xk , uk is a state–action pair at time k and the                                       ∂τN −1     ∂xN     ∂τN −1
+value function term is negative because we have defined it in the
+                                                                                                  ∂V (xN ) ∂ 2 f (τN  *0
+                                                                                                                       
+                                                                                                                       
+context of RL, where it is maximized.                                                                                −1 )
+   In this formulation, the term V ∗ (xN ) represents the optimal                               +                
+                                                                                                   ∂xN      ∂τN 2
+                                                                                                                    −1
+cost-to-go from the end of the finite horizon N. The hypothesis
+of our analysis is that the critic, through RL, learns an approxi-                                   ∂xTN ∂ 2 V (xN ) ∂xN
+                                                                                                =
+mation of this infinite-horizon value function. The actor, in turn,                                 ∂τN −1 ∂x2N ∂τN −1
+learns the quadratic cost parameters (QN , pN ) that best represent
+the local, second-order approximation of this value function at                                   ∂f (τN −1 )T ∂ 2 V (xN ) ∂f (τN −1 )
+                                                                                                =
+the horizon’s boundary.                                                                              ∂τN −1        ∂x2N     ∂τN −1
+   On the other hand, the quadratized problem that we solve in                                          
+the differentiable MPC block has the following form:                                                AN −1 ∂ 2 V (xN )
+                     T                                                                    =                        AN −1 , BN −1                  (13)
+                N                                                                                 BN −1       ∂x2N
+                      xk           xk         xk
+                             Qk         + pk       .           (11)
+                k=0
+                      u k          u k        u k                              where we have assumed that the second derivative of the dy-
+                                                                                                     2
+
+This motivates the investigation of a potential relationship be-               namics is zero, and ∂ ∂xV (xN )
+                                                                                                          2    is the Hessian of the value function
+                                                                                                          N
+
+tween the value function V (x) learned by the critic and the                   with respect to its inputs.
+quadratic (QN ) and linear (pN ) terms learned by the actor within                In order to empirically show the relationship between the
+the differentiable MPC framework. In particular, we aim to                     Hessian of the value function and what is learned in QN and pN ,
+identify a connection between the first and second derivatives of              we perform a similarity study using linear probes. Particularly,
+the value function and pN and QN , respectively. To achieve this,              we first train an AC-MPC agent to perform the stabilization
+we can introduce the second-order Taylor Series approximation                  at hover task, introduced in Section V-E. We choose this task
+of the value function around the state–action pair τN −1                       here because, since the reward function is quadratic, it results
+                                                                               in an optimization landscape that is easier to interpret. Since we
+V (f (τN −1 ))              ≈ V (f (d))                                        need the derivative of the value function with respect to the full
+                 τN −1 =d                                                      state, the critic needs to be trained with full state information.
+                                                                               After training, we collect a dataset of uniformly distributed
+                                T        ∂ 2 V (f (τN −1 = d))
+                             + τN −1                2          τN −1           219 = 524288 datapoints, where every datapoint corresponds
+                                                 ∂τN  −1                       to a sample of QN , pN , HV , and ΔV , as per (13) and (12).
+                                 ∂V (f (τN −1 = d))                            Then, with this dataset, we train a single linear layer (without
+                             +                      τN −1                      nonlinearity) to predict the elements of the learned QN and pN
+                                       ∂τN −1
+                                           T
+                                                                               matrices from the elements of the HV and pV , respectively.
+                            = V (f (d)) + τN −1 HV τN −1 + ΔV τN −1            In the hypothesized case where the information contained in the
+
+      Authorized licensed use limited to: Gyeongsang National Univ. Downloaded on March 14,2026 at 12:57:04 UTC from IEEE Xplore. Restrictions apply.
+686                                                                                                          IEEE TRANSACTIONS ON ROBOTICS, VOL. 42, 2026
+
+
+
+
+Fig. 10. Empirical probing of the correlation between the Hessian and the gradient of the learned critic V (x) and the learned differentiable MPC cost terms
+QN and pN , for the task of quadrotor stabilization. (A): We train a linear classifier to infer QN and pN from the Hessian of V (x) and show the prediction
+from different 2-D projections of QN and pN . We show how the ground truth can be predicted with high accuracy by only using a small linear classifier, which
+                                                                                                          T Q τ + τT p
+indicates that the data learned by the critic and QN and pN are highly correlated. (B): Top: 3-D plot of τN  N N        N N for the state dimensions of vx and
+vy after training. Bottom: 3-D plot of V (x) for the same dimensions. Apart from the change in sign and in scale, the similarity between both shapes indicates a
+high correlation between the value function and the learned cost parameters.
+
+
+
+
+learned cost is related to the information encoded by the gradient               G. How Sensitive is Our Approach to Exploration
+and Hessian of the value function, we expect the regression to                   Hyperparameters?
+have a high accuracy.                                                               Since our approach incorporates a model of the dynamics
+   In Fig. 10(a), we show the true and predicted values of QN
+                                                                                 within the optimization problem, our policy has access to prior
+and pN . In order to show that the data fully correlates in all
+                                                                                 information before the training phase, and hence leverages prior
+dimensions, the data is presented in a lower triangular matrix                   knowledge of the dynamics in its architecture. In contrast, its
+for Q and in an upper triangular matrix for p. Every row and
+                                                                                 AC-MLP counterpart consists of a randomly initialized MLP
+column of this matrix is composed of the elements of the state                   policy, which has no prior built-in knowledge about the system.
+space x, therefore showing the correlation from different 1-D                    This raises questions about the extent of exploration needed to
+cuts – for the diagonal elements – and 2-D cuts – for the rest.
+                                                                                 discover an optimal policy and how the exploration parameter
+One can therefore see a high correlation between the predicted                   can be minimized to achieve optimal performance. To explore
+and the true values, therefore confirming a strong relationship                  this, we study the effect of the initial policy standard devia-
+between the value function and the learned cost parameters. An
+                                                                                 tion hyperparameter on the performance of both AC-MLP and
+extra experiment was conducted where we have tried to infer the                  AC-MPC. This parameter controls how much Gaussian noise
+same Q and p values, but from a random dataset, as a validation                  is injected at the control input level of the policy. This means
+that there is no overfitting behavior happening. Indeed, in this
+                                                                                 that for the AC-MPC, during training the noise is injected on
+case the linear classifier was not able to predict the true labels               top of the solution that comes from the optimizer. Therefore,
+at all.
+                                                                                 excessive noise can result in these solver solutions being almost
+   In conclusion, this section directly investigates and reveals
+                                                                                 entirely disregarded. In Fig. 11, we present reward plots for the
+a relationship within the internal workings of AC-MPC. By                        training on the vertical track under different values of this hy-
+demonstrating a strong correlation between the Hessian and
+                                                                                 perparameter. The results show that AC-MLP requires a higher
+gradient of the learned value function and the learned cost
+                                                                                 degree of exploration to identify the optimal solution. This
+parameters QN and pN , we have shown that the critic effectively                 indicates that AC-MPC effectively utilizes the prior dynamics
+learns information related to the curvature of the cost landscape
+                                                                                 knowledge, resulting in improved performance with reduced
+used by the MPC module. This provides valuable insight into
+                                                                                 exploration. More interestingly, Fig. 11 shows that AC-MPC is
+how the critic informs the MPC controller and suggests that the
+                                                                                 less sensitive to the choice of this hyperparameter and yields high
+learned value function encodes information about the system’s
+                                                                                 performance despite very low exploration values. On the other
+local dynamics and cost structure.
+
+      Authorized licensed use limited to: Gyeongsang National Univ. Downloaded on March 14,2026 at 12:57:04 UTC from IEEE Xplore. Restrictions apply.
+ROMERO et al.: ACTOR–CRITIC MODEL PREDICTIVE CONTROL                                                                                                              687
+
+
+
+
+Fig. 11. Comparison of reward values during training for different exploration
+parameters [0.22, 0.3, 0.44, 0.6] for both AC-MLP and AC-MPC, for the Vertical
+track.
+
+                                                                                 Fig. 12. Top view of the performance of AC-MLP and AC-MPC policies
+hand, AC-MLP fails to reach high-reward regions when trained                     deployed in both nominal and a realistic simulator for quadrotor racing in the
+with low values and generally underperforms in comparison to                     SplitS track. The policies are tested for 64 different initial positions, distributed
+                                                                                 in a cube of 0.5 m of side length.
+the proposed method. As a conclusion of this study, the main
+guideline to tune the proposed AC-MPC is to use less exploration
+noise than generally needed for AC-MLP. Table II shows the
+hyperparameters used for both AC-MPC and AC-MLP, where
+the main difference is the initial exploration hyperparameter.
+
+H. How Does Our Method Perform When Deployed in the
+Real-World?
+   We test our approach in the real world with a high-
+performance racing drone. In order to test simulation to real
+world transfer, we deploy the policy with two different race
+tracks: Circle track and SplitS track. We use the Agilicious
+control stack [126] for the deployment. The main physical
+parameters and components of this platform are based on [14],
+under the name 4 s drone.
+   In addition, we perform a lap time comparison in the SplitS
+track. We train both AC-MPC and AC-MLP in the task of drone
+                                                                                 Fig. 13. AC-MPC trained for the task of agile flight in complex environments.
+racing and execute different runs in two different simulation                    On the left is the Circle track, and on the right is the SplitS track for both the
+fidelities: nominal dynamics and realistic simulator. This real-                 real world and simulation. These figures show how our approach is able to be
+istic simulator, called NeuroBEM, and based in blade element                     deployed in the real world and how they transfer zero shot from simulation to
+                                                                                 reality. The plots show the flown trajectories by our quadrotor platform, recorded
+momentum theory, comes from [124]. We would like to note that                    by a motion capture system. (a) Simulation results. (b) Real-world results.
+quadcopters are complex robots and many difficulties arise when
+transferring policies from simulation to the real hardware, espe-
+cially given the inherent aggressiveness of time-optimal policies.               different initial positions, contained in a cube of 0.5 m of side
+To address these limitations, we follow the sim2real techniques                  length. In addition, Fig. 13 illustrates trajectories flown in two
+used in [24], where we first train policies in a nonfine-tuned                   different tracks (Circle track and SplitS track) in simulation and
+simulator, then deploy these policies and collect more data.                     the real world. Not only can our policy transfer to the real world
+This data is then used to refine and develop a higher fidelity                   without any fine-tuning, but it can do so while at the limit of
+simulator, which is then used to train the final policy. On top                  handling, achieving speeds up to 21 m/s.
+of this, we use a significant amount of domain randomization                        In Table IV, we show the results of this comparison in terms of
+in key parameters such as thrust map, mass, latency, drag, and                   lap time and success rate, including both simulation modalities
+initial state. Finally, a term in the reward function that smoothes              and real-world results.
+the control actions is needed to avoid jitter of the platform                       As observed in the lap time results, both AC-MPC and AC-
+and ensure a safe deployment. In Fig. 12, we show a top view                     MLP exhibit similar performance in terms of lap time, indicating
+of the deployment of both AC-MLP and AC-MPC in both of                           that they are largely on par in this aspect. This similarity is
+the aforementioned simulators. The policies are tested for 64                    expected, given that their asymptotic performance and final
+
+       Authorized licensed use limited to: Gyeongsang National Univ. Downloaded on March 14,2026 at 12:57:04 UTC from IEEE Xplore. Restrictions apply.
+688                                                                                                          IEEE TRANSACTIONS ON ROBOTICS, VOL. 42, 2026
+
+
+
+                             TABLE IV                                             This indicates that the critic learns an accurate, infinite-horizon
+      PERFORMANCE COMPARISON BETWEEN AC-MLP AND AC-MPC IN THE
+                            SPLITS TRACK
+                                                                                  cost-to-go, which it then uses to inform the differentiable MPC.
+
+
+                                                                                                             VI. CONCLUSION
+                                                                                     This work presented a new learning-based control framework
+                                                                                  that combines the advantages of differentiable MPC with actor–
+                                                                                  critic training. Furthermore, we showed that for quadrotor racing
+                                                                                  tasks, AC-MPC can leverage the prior knowledge embedded
+                               TABLE V                                            in the system dynamics to achieve better training performance
+        SOLVE TIMES AND INFERENCE TIMES FOR DIFFERENT VARIATIONS
+                                                                                  when compared to the main PPO baseline (AC-MLP), to better
+                                                                                  cope with out-of-distribution scenarios, and its ability to deal
+                                                                                  with variations in the nominal dynamics, without any further
+                                                                                  retraining. Through empirical analysis, the interpretable nature
+                                                                                  of the differentiable MPC embedded in the actor–critic archi-
+                                                                                  tecture allows us to reveal a relationship between the learned
+                                                                                  value function and the learned cost functions. This provides a
+                                                                                  deeper understanding of the interplay between the RL and MPC,
+                                                                                  offering valuable insights for future research. In addition, our
+                                                                                  approach achieved zero-shot sim-to-real transfer, demonstrated
+reward values are quite close, as illustrated in Fig. 5. However, it              by successfully controlling a quadrotor at velocities of up to
+is important to note that our approach not only achieves on-par                   21 m/s in the physical world, being on par in performance with
+performance, but also demonstrates additional properties in out-                  the AC-MLP baseline. In general, we show that our method
+of-distribution scenarios (see Fig. 6, in Horizontal and Vertical                 can tackle challenging control tasks and achieves robust control
+tracks), and changes in the system dynamics (see Fig. 7, in SplitS                performance for agile flight.
+track). This indicates that our method maintains its effectiveness                   However, there are some limitations to be mentioned and to
+under a wider range of conditions and uncertainties, while                        be improved in the future. First, ACMPC relies on differentiable
+still matching the performance of the neural network-based                        MPC [31], whose theoretical framework and gradient derivation
+architecture.                                                                     cover input constrained problems only. Therefore, state con-
+                                                                                  straints are not supported, since this solver does not implement
+I. How Do Training and Inference Times Compare to Standard                        them. Consequently, our controller inherits this limitation and
+Actor–Critic Architectures?                                                       can currently enforce input limits but not explicit state bounds.
+   In Table V, we show the training times (SplitS track) and the                  This becomes particularly evident in safety-related tasks, such as
+forward pass times for AC-MLP and for the proposed AC-MPC                         collision avoidance or enforcing a speed limit. In such scenarios,
+for different horizon lengths. As can be seen, while AC-MPC                       simply penalizing violations as a term in the reward function
+offers performance advantages, it incurs a higher computational                   does not guarantee that the constraints will be respected at de-
+cost. Training time is increased by a factor of approximately 30                  ployment time. We believe that the work introduced in this article
+(for a horizon length of N = 2) due to the batched optimization                   highlights and motivates the practical value of developing a
+required for each forward and backward pass. This computa-                        differentiable MPC solver that natively supports state constraints
+tional overhead also affects online performance, resulting in                     Our results serve as strong encouragement for the numerical
+a slower forward pass. Although the current Python imple-                         optimization community to further work in that direction. In
+mentation1 of the differentiable MPC algorithm [31] achieves                      addition, AC-MPC may underperform or fail in certain practi-
+a sufficient deployment frequency of 50 Hz for our system,                        cal scenarios. One such case is solver nonconvergence. Since
+optimized C/C++ implementations would significantly reduce                        AC-MPC relies on solving an optimization problem at every
+training time and enable higher frequency deployments. Note,                      control step, it is susceptible to failures if the problem becomes
+however, that this computational overhead did not affect closed-                  ill-conditioned or infeasible due to, e.g., extreme cost weights,
+loop performance, as the 13.5 ms execution time remained well                     poor initialization, or tight constraints. Such failures can result
+within our 20 ms control time step budget necessary to deploy                     in invalid control actions and incorrect gradient updates during
+the system successfully in the real world. Furthermore, although                  training. While this issue was rare in our experiments (especially
+classical MPC often requires horizons longer than N = 2, our                      after enforcing positive definiteness of the cost matrices) it
+architecture uses a trained critic network to learn and provide                   remains a relevant concern.
+the long-term reasoning to the short-horizon solver. Our analysis                    Another key limitation is the scalability of the optimization
+in Section V-F shows that the learned MPC cost matrices are                       block. The differentiable MPC [31] solver used in this work is
+highly correlated with the Hessian of the critic’s value function.                based on iterative LQR, which scales cubically with the state
+                                                                                  and input dimensions, and linearly with the horizon length. As
+                                                                                  a result, control of high-dimensional, more complex systems or
+  1 [Online]. Available: https://locuslab.github.io/mpc.pytorch/                  use of longer horizons may become impractical for real-time
+
+        Authorized licensed use limited to: Gyeongsang National Univ. Downloaded on March 14,2026 at 12:57:04 UTC from IEEE Xplore. Restrictions apply.
+ROMERO et al.: ACTOR–CRITIC MODEL PREDICTIVE CONTROL                                                                                                           689
+
+
+
+deployment. While all experiments in this work are conducted                         [2] K. Friston, “The free-energy principle: A unified brain theory?,” Nature
+using a quadrotor platform with moderate dimensionality, train-                          Rev. Neurosci., vol. 11, no. 2, pp. 127–138, 2010.
+                                                                                     [3] Y. LeCun, “A path towards autonomous machine intelligence version 0.9.
+ing, and deploying and extending our AC-MPC framework to                                 2 2022-06-27,” Open Rev., vol. 62, no. 1, pp. 1–62, 2022.
+more complex, high-dimensional robotic systems represents a                          [4] T. Tzanetos et al., “Ingenuity mars helicopter: From technology demon-
+promising direction for future research. Such extensions would                           stration to extraterrestrial scout,” in Proc. IEEE Aerosp. Conf., 2022,
+                                                                                         pp. 01–19.
+also motivate the development of more efficient differentiable                       [5] E. Arthur Jr and J.-C. Ho, Applied Optimal Control: Optimiza-
+solvers to further reduce training and inference times.                                  tion, Estimation, and Control, Scottsdale, AZ, USA: Hemisphere,
+   Furthermore, AC-MPC assumes that the system dynamics                                  1975.
+                                                                                     [6] M. Ellis, J. Liu, and P. D. Christofides, Economic Model Predictive Con-
+can be expressed as an analytical formulation, and that they                             trol: Theory, Formulations and Chemical Process Applications, Berlin,
+are differentiable, since gradients must be propagated through                           Germany: Springer, 2016.
+the MPC solver during training. This restricts the applicability                     [7] P.-B. Wieber, R. Tedrake, and S. Kuindersma, “Modeling and control
+                                                                                         of legged robots,” in Springer Handbook of Robotics, Berlin, Germany:
+of our method to systems with known, differentiable dynamics                             Springer, 2016, pp. 1203–1234.
+expressed in closed form. In the absence of such models, the core                    [8] P. Foehn et al., “Alphapilot: Autonomous drone racing,” in Proc. Robot.:
+assumptions needed to compute gradients through the solver no                            Sci. Syst., Corvallis, Oregon, USA, 2020, Art. no. 081. [Online]. Avail-
+                                                                                         able: https://www.roboticsproceedings.org/rss16/p081.pdf
+longer apply.                                                                        [9] P. Foehn, A. Romero, and D. Scaramuzza, “Time-optimal planning
+   We believe that successfully tackling these challenges would                          for quadrotor waypoint flight,” Sci. Robot., vol. 6, no. 56, 2021,
+unlock the demonstrated benefits of AC-MPC for a much wider                              Art. no. eabh1221. [Online]. Available: https://www.science.org/doi/abs/
+                                                                                         10.1126/scirobotics.abh1221
+range of real-world robotic applications, significantly broaden-                    [10] A. Romero, S. Sun, P. Foehn, and D. Scaramuzza, “Model predictive con-
+ing the impact of this architecture.                                                     touring control for time-optimal quadrotor flight,” IEEE Trans. Robot.,
+   A final point of discussion is the distinction between AC-MPC                         vol. 38, no. 6, pp. 3340–3356, Dec. 2022.
+                                                                                    [11] A. Romero, R. Penicka, and D. Scaramuzza, “Time-optimal online re-
+and standard MBRL methods. First, standard MBRL is designed                              planning for agile quadrotor flight,” IEEE Robot. Automat. Lett., vol. 7,
+for scenarios where dynamics are unknown and must be learned                             no. 3, pp. 7730–7737, Jul. 2022.
+from data, whereas the AC-MPC framework assumes access                              [12] D. V. Lu, D. Hershberger, and W. D. Smart, “Layered costmaps for
+                                                                                         context-sensitive navigation,” in Proc. IEEE/RSJ Int. Conf. Intell. Robots
+to a known, analytical dynamics model as a key component                                 Syst., 2014, pp. 709–715.
+of its differentiable MPC module. Second, most state-of-the-art                     [13] T. Miki, J. Lee, J. Hwangbo, L. Wellhausen, V. Koltun, and M. Hutter,
+MBRL methods are off-policy, leveraging a replay buffer for                              “Learning robust perceptive locomotion for quadrupedal robots in the
+                                                                                         wild,” Sci. Robot., vol. 7, no. 62, 2022, Art. no. eabk2822.
+improved sample efficiency. A third key difference lies in reward                   [14] Y. Song, A. Romero, M. Mueller, V. Koltun, and D. Scaramuzza, “Reach-
+design. AC-MPC benefits from the flexibility to learn from any                           ing the limit in autonomous racing: Optimal control versus reinforcement
+high-level reward signal, irrespective of its shape or differentia-                      learning,” Sci. Robot., vol. 8, no. 82, 2023, Art. no. adg1462. [On-
+                                                                                         line]. Available: https://www.science.org/doi/abs/10.1126/scirobotics.
+bility. In contrast, MBRL methods that rely on planning through                          adg1462
+the model, particularly those using gradient-based techniques,                      [15] N. Roy et al., “From machine learning to robotics: Challenges and
+often require more carefully structured or differentiable reward                         opportunities for embodied intelligence,” 2021, arXiv:2110.15245.
+                                                                                    [16] X. Xiao, B. Liu, G. Warnell, and P. Stone, “Motion planning and control
+functions to ensure stability and enable effective planning.                             for mobile robot navigation using machine learning: A survey,” Auton.
+   In our work, we show that our approach enhances an on-policy                          Robots, vol. 46, no. 5, pp. 569–597, 2022.
+algorithm (PPO) by integrating an optimization-based prior from                     [17] C. Chi et al., “Diffusion policy: Visuomotor policy learning via action
+                                                                                         diffusion,” Int. J. Robot. Res., 2023, Art. no. 02783649241273668.
+MPC. Given this, our approach is best understood as a method to                     [18] A. Das, R. D. Yadav, S. Sun, M. Sun, S. Kaski, and W. Pan, “Dronedif-
+improve the properties of an on-policy algorithm, and the most                           fusion: Robust quadrotor dynamics learning with diffusion models,” in
+sensible comparisons are against the components it seeks to inte-                        Proc. IEEE Int. Conf. Robot. Automat., 2025, pp. 1604–1610.
+                                                                                    [19] A. Ajay, Y. Du, A. Gupta, J. Tenenbaum, T. Jaakkola, and P. Agrawal,
+grate: the pure model-free approach (AC-MLP) and the classic                             “Is conditional generative modeling all you need for decision making?,”
+optimization-based controller (MPC). This allows for a clear                             in Proc. 11th Int. Conf. Learn. Representations, 2023.
+demonstration of the value added by our hybrid architecture.                        [20] D. Silver et al., “Mastering the game of go with deep neural networks
+                                                                                         and tree search,” Nature, vol. 529, no. 7587, pp. 484–489, 2016.
+   While our results focus on agile quadrotor flight, we believe                    [21] V. Mnih et al., “Human-level control through deep reinforcement learn-
+that the proposed method represents an important step in the                             ing,” Nature, vol. 518, no. 7540, pp. 529–533, 2015.
+direction of generalizability and out of distribution behaviour                     [22] O. Vinyals et al., “Grandmaster level in StarCraft II using multi-agent
+                                                                                         reinforcement learning,” Nature, vol. 575, no. 7782, pp. 350–354, 2019.
+in RL. The proposed method demonstrates that modular solu-                          [23] P. R. Wurman et al., “Outracing champion Gran Turismo drivers with
+tions, which combine the advantages of learning-centric and                              deep reinforcement learning,” Nature, vol. 602, no. 7896, pp. 223–228,
+model-based approaches, are becoming increasingly promising.                             2022.
+                                                                                    [24] E. Kaufmann, L. Bauersfeld, A. Loquercio, M. Müller, V. Koltun, and
+Our approach potentially paves the way for the development of                            D. Scaramuzza, “Champion-level drone racing using deep reinforcement
+more robust RL-based systems, contributing positively towards                            learning,” Nature, vol. 620, no. 7976, pp. 982–987, Aug. 2023.
+the broader goal of advancing AI for real-world robotics appli-                     [25] L. Brunke et al., “Safe learning in robotics: From learning-based control
+                                                                                         to safe reinforcement learning,” Annu. Rev. Control Robot. Auton. Syst.,
+cations.                                                                                 vol. 5, pp. 411–444, 2022.
+                                                                                    [26] M. Vecerik et al., “Leveraging demonstrations for deep reinforce-
+                                                                                         ment learning on robotics problems with sparse rewards,” 2017,
+                                   REFERENCES                                            arXiv:1707.08817.
+                                                                                    [27] D. Rengarajan, G. Vaidya, A. Sarvesh, D. Kalathil, and S. Shakkottai,
+  [1] R. P. N. Rao and D. H. Ballard, “Predictive coding in the visual cortex: A         “Reinforcement learning with sparse rewards using guidance from of-
+      functional interpretation of some extra-classical receptive-field effects,”        fline demonstration,” in Proc. Int. Conf. Learn. Representations, 2022.
+      Nature Neurosci., vol. 2, no. 1, pp. 79–87, 1999.                                  [Online]. Available: https://openreview.net/forum?id=YJ1WzgMVsMt
+
+
+
+       Authorized licensed use limited to: Gyeongsang National Univ. Downloaded on March 14,2026 at 12:57:04 UTC from IEEE Xplore. Restrictions apply.
+690                                                                                                           IEEE TRANSACTIONS ON ROBOTICS, VOL. 42, 2026
+
+
+
+ [28] L. Hewing, K. P. Wabersich, M. Menner, and M. N. Zeilinger, “Learning-        [51] M. Neunert et al., “Whole-body nonlinear model predictive control
+      based model predictive control: Toward safe learning in control,” Annu.            through contacts for quadrupeds,” IEEE Robot. Automat. Lett., vol. 3,
+      Rev. Control Robot. Auton. Syst., vol. 3, pp. 269–296, 2020.                       no. 3, pp. 1458–1465, Jul. 2018.
+ [29] K. P. Wabersich, L. Hewing, A. Carron, and M. N. Zeilinger, “Proba-           [52] M. Neunert et al., “Fast nonlinear model predictive control for unified
+      bilistic model predictive safety certification for learning-based control,”        trajectory optimization and tracking,” in Proc. IEEE Int. Conf. Robot.
+      IEEE Trans. Autom. Control, vol. 67, no. 1, pp. 176–188, Jan. 2022.                Automat., 2016, pp. 1398–1404.
+ [30] A. Romero, Y. Song, and D. Scaramuzza, “Actor-critic model pre-               [53] M. Bjelonic et al., “Offline motion libraries and online MPC for advanced
+      dictive control,” in Proc. IEEE Int. Conf. Robot. Automat., 2024,                  mobility skills,” Int. J. Robot. Res., vol. 41, no. 9-10, pp. 903–924,
+      pp. 14777–14784.                                                                   2022.
+ [31] B. Amos, I. Jimenez, J. Sacks, B. Boots, and J. Z. Kolter, “Differentiable    [54] S. Kuindersma et al., “Optimization-based locomotion planning, estima-
+      MPC for end-to-end planning and control,” in Proc. Adv. neural Inf.                tion, and control design for the atlas humanoid robot,” Auton. Robots,
+      Process. Syst., 2018, vol. 31, pp. 8299–8310.                                      vol. 40, no. 3, pp. 429–455, 2016.
+ [32] C. E. Garcia, D. M. Prett, and M. Morari, “Model predictive control:          [55] G. Williams, P. Drews, B. Goldfain, J. M. Rehg, and E. A. Theodorou,
+      Theory and practice—a survey,” Automatica, vol. 25, no. 3, pp. 335–348,            “Information-theoretic model predictive control: Theory and applica-
+      1989.                                                                              tions to autonomous driving,” IEEE Trans. Robot., vol. 34, no. 6,
+ [33] Y. Wang and S. Boyd, “Fast model predictive control using online opti-             pp. 1603–1622, Dec. 2018.
+      mization,” IEEE Trans. control Syst. Technol., vol. 18, no. 2, pp. 267–278,   [56] M. Bhardwaj et al., “Storm: An integrated framework for fast joint-space
+      Mar. 2010.                                                                         model-predictive control for reactive manipulation,” in Proc. Conf. Robot
+ [34] R. González, M. Fiacchini, J. L. Guzmán, T. Álamo, and F. Rodrıǵuez,              Learn., 2022, pp. 750–759.
+      “Robust tube-based predictive control for mobile robots in off-road           [57] M. Minarik, R. Penicka, V. Vonasek, and M. Saska, “Model predictive
+      conditions,” Robot. Auton. Syst., vol. 59, no. 10, pp. 711–726, 2011.              path integral control for agile unmanned aerial vehicles,” in Proc. 2024
+ [35] A. Liniger, A. Domahidi, and M. Morari, “Optimization-based au-                    IEEE/RSJ Int. Conf. Intell. Robot. Syst., 2024, pp. 13144–13151.
+      tonomous racing of 1: 43 scale RC cars,” Optimal Control Appl. Methods,       [58] H. Xue, C. Pan, Z. Yi, G. Qu, and G. Shi, “Full-order sampling-based
+      vol. 36, no. 5, pp. 628–647, 2015.                                                 MPC for torque-level locomotion control via diffusion-style annealing,”
+ [36] F. Farshidian, E. Jelavic, A. Satapathy, M. Giftthaler, and J. Buchli,             in Proc. IEEE Int. Conf. Robot. Automat., 2025, pp. 4974–4981.
+      “Real-time motion planning of legged robots: A model predictive control       [59] O. M. Andrychowicz et al., “Learning dexterous in-hand manipulation,”
+      approach,” in Proc. IEEE RAS 17th Int. Conf. Humanoid Robot., 2017,                Int. J. Robot. Res., vol. 39, no. 1, pp. 3–20, 2020.
+      pp. 577–584.                                                                  [60] J. Degrave et al., “Magnetic control of tokamak plasmas through deep
+ [37] C. Liu, S. Lee, S. Varnhagen, and H. E. Tseng, “Path planning for                  reinforcement learning,” Nature, vol. 602, pp. 414–419, 2022.
+      autonomous vehicles using model predictive control,” in Proc. IEEE            [61] D. Mankowitz et al., “Faster sorting algorithms discovered using deep
+      Intell. Veh. Symp., 2017, pp. 174–179.                                             reinforcement learning,” Nature, vol. 618, pp. 257–263, 2023.
+ [38] T. Han, A. Liu, A. Li, A. Spitzer, G. Shi, and B. Boots, “Model predictive    [62] J. Lee, J. Hwangbo, L. Wellhausen, V. Koltun, and M. Hutter, “Learning
+      control for aggressive driving over uneven terrain,” in Proc. Robot.: Sci.         quadrupedal locomotion over challenging terrain,” Sci. Robot., vol. 5,
+      Syst., Delft, Netherlands, 2024, Art. no. 022. [Online]. Available: https:         no. 47, 2020, Art. no. eabc5986.
+      //www.roboticsproceedings.org/rss20/p022.pdf                                  [63] A. Gharib, D. Stenger, R. Ritschel, and R. Voßwinkel, “Multi-
+ [39] E. Arcari et al., “Bayesian multi-task learning MPC for robotic mobile             objective optimization of a path-following mpc for vehicle guidance:
+      manipulation,” IEEE Robot. Automat. Lett., vol. 8, no. 6, pp. 3222–3229,           A bayesian optimization approach,” in Proc. Eur. Control Conf., 2021,
+      Jun. 2023.                                                                         pp. 2197–2204.
+ [40] A. Saviolo, J. Frey, A. Rathod, M. Diehl, and G. Loianno, “Active learn-      [64] A. Romero, S. Govil, G. Yilmaz, Y. Song, and D. Scaramuzza, “Weighted
+      ing of discrete-time dynamics for uncertainty-aware model predictive               maximum likelihood for controller tuning,” in Proc. IEEE Int. Conf.
+      control,” IEEE Trans. Robot., vol. 40, pp. 1273–1291, 2023.                        Robot. Automat., 2023, pp. 1334–1341.
+ [41] G. Li and G. Loianno, “Nonlinear model predictive control for cooper-         [65] A. Romero, P. N. Beuchat, Y. R. Stürz, R. S. Smith, and J. Lygeros, “Non-
+      ative transportation and manipulation of cable suspended payloads with             linear control of quadcopters via approximate dynamic programming,”
+      multiple quadrotors,” in Proc. IEEE/RSJ Int. Conf. Intell. Robots Syst.,           in Proc. 18th Eur. Control Conf., 2019, pp. 3752–3759.
+      2023, pp. 5034–5041.                                                          [66] B. Tearle, K. P. Wabersich, A. Carron, and M. N. Zeilinger, “A predictive
+ [42] L. P. Fröhlich, C. Küttel, E. Arcari, L. Hewing, M. N. Zeilinger, and              safety filter for learning-based racing control,” IEEE Robot. Automat.
+      A. Carron, “Contextual tuning of model predictive control for au-                  Lett., vol. 6, no. 4, pp. 7635–7642, Oct. 2021.
+      tonomous racing,” in Proc. IEEE/RSJ Int. Conf. Intell. Robots Syst., 2022,    [67] G. Grandesso, E. Alboni, G. P. R. Papini, P. M. Wensing, and A. D.
+      pp. 10555–10562.                                                                   Prete, “CACTO: Continuous actor-critic with trajectory optimization—
+ [43] M. Krinner, A. Romero, L. Bauersfeld, M. Zeilinger, A. Carron, and                 towards global optimality,” IEEE Robot. Automat. Lett., vol. 8, no. 6,
+      D. Scaramuzza, “MPCC++: Model predictive contouring control for                    pp. 3318–3325, Jun. 2023.
+      time-optimal flight with safety constraints,” in Proc. Robotics: Sci.         [68] D. Hoeller, F. Farshidian, and M. Hutter, “Deep value model predictive
+      Syst., Delft, Netherlands, 2024, Art. no. 109. [Online]. Available: https:         control,” in Proc. Conf. Robot Learn., 2020, pp. 990–1004.
+      //www.roboticsproceedings.org/rss20/p109.pdf                                  [69] R. Reiter, A. Ghezzi, K. Baumgärtner, J. Hoffmann, R. D. McAllister, and
+ [44] K. P. Wabersich and M. N. Zeilinger, “A predictive safety filter for               M. Diehl, “AC4MPC: Actor-critic reinforcement learning for nonlinear
+      learning-based control of constrained nonlinear dynamical systems,”                model predictive control,” IEEE Trans. Control Syst. Technol., to be
+      Automatica, vol. 129, 2021, Art. no. 109597.                                       publishe, doi: 10.1109/TCST.2025.3620521.
+ [45] A. Tagliabue and J. P. How, “Efficient deep learning of robust policies       [70] J. Sacks and B. Boots, “Learning to optimize in model predictive control,”
+      from MPC using imitation and tube-guided data augmentation,” IEEE                  in Proc. Int. Conf. Robot. Automat., 2022, pp. 10549–10556.
+      Trans. Robot., vol. 40, pp. 4301–4321, 2024.                                  [71] J. Sacks, R. Rana, K. Huang, A. Spitzer, G. Shi, and B. Boots, “Deep
+ [46] A. Tagliabue and J. P. How, “Tube-NeRF: Efficient imitation learning of            model predictive optimization,” in Proc. IEEE Int. Conf. Robot. Automat.,
+      visuomotor policies from MPC via tube-guided data augmentation and                 2024, pp. 16945–16953.
+      NeRFs,” IEEE Robot. Automat. Lett., vol. 9, no. 6, pp. 5544–5551, 2024.       [72] B. Zarrouki, M. Spanakakis, and J. Betz, “A safe reinforcement learn-
+ [47] F. Djeumou et al., “One model to drift them all: Physics-informed                  ing driven weights-varying model predictive control for autonomous
+      conditional diffusion model for driving at the limits,” in Proc. 8th Annu.         vehicle motion control,” in Proc. IEEE Intell. Veh. Symp., 2024,
+      Conf. Robot Learn., 2025, pp. 604–630.                                             pp. 1401–1408.
+ [48] L. Jaillet, J. Cortés, and T. Siméon, “Sampling-based path planning           [73] B. Zarrouki, V. Klös, N. Heppner, S. Schwan, R. Ritschel, and R.
+      on configuration-space costmaps,” IEEE Trans. Robot., vol. 26, no. 4,              Voßwinkel, “Weights-varying MPC for autonomous vehicle guidance:
+      pp. 635–646, Aug. 2010.                                                            A deep reinforcement learning approach,” in Proc. Eur. Control Conf.,
+ [49] K. Zheng, ROS Navigation Tuning Guide. Cham, Switzerland: Springer,                2021, pp. 119–125.
+      2021, pp. 197–226.                                                            [74] F. Jenelten, J. He, F. Farshidian, and M. Hutter, “DTC: Deep tracking
+ [50] G. Bledt, M. J. Powell, B. Katz, J. Di Carlo, P. M. Wensing, and                   control,” Sci. Robot., vol. 9, no. 86, 2024, Art. no. eadh5401.
+      S. Kim, “Mit cheetah 3: Design and control of a robust, dynamic               [75] R. Reiter, J. Hoffmann, J. Boedecker, and M. Diehl, “A hierarchical
+      quadruped robot,” in Proc. IEEE/RSJ Int. Conf. Intell. Robots Syst., 2018,         approach for strategic motion planning in autonomous racing,” in Proc.
+      pp. 2245–2252.                                                                     Eur. Control Conf., 2023, pp. 1–8.
+
+
+
+      Authorized licensed use limited to: Gyeongsang National Univ. Downloaded on March 14,2026 at 12:57:04 UTC from IEEE Xplore. Restrictions apply.
+ROMERO et al.: ACTOR–CRITIC MODEL PREDICTIVE CONTROL                                                                                                              691
+
+
+
+ [76] K. Seel, A. B. Kordabad, S. Gros, and J. T. Gravdahl, “Convex neural          [100] F. Yang, C. Wang, C. Cadena, and M. Hutter, “Iplanner: Imperative path
+      network-based cost modifications for learning model predictive control,”            planning,” in Proc. Robotics: Sci. Syst., Daegu, Republic of Korea, 2023,
+      IEEE Open J. Control Syst., vol. 1, pp. 366–379, 2022.                              Art. no. 064. [Online]. Available: https://www.roboticsproceedings.org/
+ [77] A. Saviolo, G. Li, and G. Loianno, “Physics-inspired temporal learning              rss19/p064.pdf
+      of quadrotor dynamics for accurate model predictive trajectory track-         [101] P. Karkus, B. Ivanovic, S. Mannor, and M. Pavone, “Diffstack: A differ-
+      ing,” IEEE Robot. Automat. Lett., vol. 7, no. 4, pp. 10256–10263,                   entiable and modular control stack for autonomous vehicles,” in Proc.
+      Oct. 2022.                                                                          Conf. Robot Learn., 2023, pp. 2170–2180.
+ [78] I. Lenz, R. A. Knepper, and A. Saxena, “DeepMPC: Learning deep                [102] B. Wang, Z. Ma, S. Lai, and L. Zhao, “Neural moving horizon estimation
+      latent features for model predictive control,” in Proc. Robot.: Sci. Syst.,         for robust flight control,” IEEE Trans. Robot., vol. 40, pp. 639–659, 2023.
+      Rome, Italy, 2015, Art. no. 045. [Online]. Available: https://www.            [103] L. Pineda et al., “Theseus: A library for differentiable nonlinear opti-
+      roboticsproceedings.org/rss11/p45.pdf                                               mization,” in Proc. Adv. Neural Inf. Process. Syst., 2022, pp. 3801–3818.
+ [79] M. Watter, J. Springenberg, J. Boedecker, and M. Riedmiller, “Embed           [104] C. Wang et al., “PyPose: A library for robot learning with physics-based
+      to control: A locally linear latent dynamics model for control from raw             optimization,” in Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recog-
+      images,” in Proc. Adv. Neural Inf. Process. Syst., 2015, pp. 2746–2754.             nit., 2023, pp. 22024–22034.
+ [80] F. Ebert, C. Finn, S. Dasari, A. Xie, A. Lee, and S. Levine, “Visual          [105] S. East, M. Gallieri, J. Masci, J. Koutnik, and M. Cannon, “Infinite-
+      foresight: Model-based deep reinforcement learning for vision-based                 horizon differentiable model predictive control,” in Proc. Int. Conf. Learn.
+      robotic control,” 2018, arXiv:1812.00568.                                           Representations, 2019.
+ [81] G. Shi et al., “Neural lander: Stable drone landing control using learned     [106] X. Xiao et al., “Learning model predictive controllers with real-time
+      dynamics,” in Proc. Int. Conf. Robot. Automat., 2019, pp. 9784–9790.                attention for real-world navigation,” in Proc. 6th Conf. Robot Learn.,
+ [82] W. Cao, A. Capone, R. Yadav, S. Hirche, and W. Pan, “Computation-                   2022, pp. 1708–1721.
+      aware learning for stable control with gaussian process,” in Proc. Robot.:    [107] C. De Wagter, F. Paredes-Vallés, N. Sheth, and G. C. H. E. de Croon,
+      Sci. Syst., Corvallis, Oregon, USA, 2020, Art. no. 004. [Online]. Avail-            “The sensing, state-estimation, and control behind the winning entry to
+      able: https://www.roboticsproceedings.org/rss20/p004.pdf                            the 2019 artificial intelligence robotic racing competition,” Field Robot.,
+ [83] N. A. Hansen, H. Su, and X. Wang, “Temporal difference learning                     vol. 2, pp. 1263–1290, 2022.
+      for model predictive control,” in Proc. Int. Conf. Mach. Learn., 2022,        [108] H. Nguyen, M. Kamel, K. Alexis, and R. Siegwart, “Model predictive
+      pp. 8387–8406.                                                                      control for micro aerial vehicles: A survey,” in Proc. Eur. Control
+ [84] M. Pereira, D. D. Fan, G. N. An, and E. Theodorou, “MPC-                            Conf., 2021, pp. 1556–1563.
+      inspired neural network policies for sequential decision making,” 2018,       [109] M. Bangura and R. Mahony, “Real-time model predictive control for
+      arXiv:1802.05803.                                                                   quadrotors,” in Proc. IFAC Proc. Vol., Cape Town, South Africa, 2014,
+ [85] S. Adhau, S. Gros, and S. Skogestad, “Reinforcement learning based                  vol. 47, no. 3, pp. 11773–11780.
+      MPC with neural dynamical models,” Eur. J. Control, vol. 80, 2024,            [110] M. Diehl, H. G. Bock, H. Diedam, and P. B. Wieber, “Fast direct
+      Art. no. 101048.                                                                    multiple shooting algorithms for optimal robot control,” in Fast Motions
+ [86] E. Bøhn, S. Gros, S. Moe, and T. A. Johansen, “Optimization of the                  in Biomechanics and Robotics. Berlin, Germany: Springer, 2006.
+      model predictive control meta-parameters through reinforcement learn-         [111] Y. Song, M. Steinweg, E. Kaufmann, and D. Scaramuzza, “Autonomous
+      ing,” Eng. Appl. Artif. Intell., vol. 123, 2023, Art. no. 106211.                   drone racing with deep reinforcement learning,” in Proc. IEEE/RSJ Int.
+ [87] H. N. Esfahani, A. B. Kordabad, W. Cai, and S. Gros, “Learning-based                Conf. Intell. Robots Syst., 2021, pp. 1205–1212.
+      state estimation and control using MHE and MPC schemes with imperfect         [112] R. Penicka and D. Scaramuzza, “Minimum-time quadrotor waypoint
+      models,” Eur. J. Control, vol. 73, 2023, Art. no. 100880.                           flight in cluttered environments,” IEEE Robot. Automat. Lett., vol. 7,
+ [88] A. S. Anand, D. Reinhardt, S. Sawant, J. T. Gravdahl, and S. Gros, “A               no. 2, pp. 5719–5726, Apr. 2022.
+      painless deterministic policy gradient method for learning-based MPC,”        [113] M. Ellis, H. Durand, and P. D. Christofides, “A tutorial review of eco-
+      in Proc. Eur. Control Conf., 2023, pp. 1–7.                                         nomic model predictive control methods,” J. Process Control, vol. 24,
+ [89] W. Cai, S. Sawant, D. Reinhardt, S. Rastegarpour, and S. Gros, “A                   no. 8, pp. 1156–1178, 2014.
+      learning-based model predictive control strategy for home energy man-         [114] J. B. Rawlings, D. Angeli, and C. N. Bates, “Fundamentals of economic
+      agement systems,” IEEE Access, vol. 11, pp. 145264–145280, 2023.                    model predictive control,” in Proc. IEEE 51st Conf. Decis. Control, 2012,
+ [90] X. Zhang, J. Liu, X. Xu, S. Yu, and H. Chen, “Robust learning-based                 pp. 3851–3861.
+      predictive control for discrete-time nonlinear systems with unknown           [115] S. Gros and M. Zanon, “Data-driven economic NMPC using reinforce-
+      dynamics and state constraints,” IEEE Trans. Syst., Man, Cybern. Syst.,             ment learning,” IEEE Trans. Autom. Control, vol. 65, no. 2, pp. 636–648,
+      vol. 52, no. 12, pp. 7314–7327, Dec. 2022.                                          Feb. 2020.
+ [91] X. Zhang et al., “Toward scalable multirobot control: Fast policy learning    [116] R. Verschueren, M. Zanon, R. Quirynen, and M. Diehl, “Time-optimal
+      in distributed MPC,” IEEE Trans. Robot., vol. 41, pp. 1491–1512, 2025.              race car driving using an online exact hessian based nonlinear MPC
+ [92] D. Hafner, T. Lillicrap, J. Ba, and M. Norouzi, “Dream to control:                  algorithm,” in Proc. Eur. control Conf., 2016, pp. 141–147.
+      Learning behaviors by latent imagination,” in Proc. Int. Conf. Learn.         [117] M. Zanon, “A gauss–newton-like hessian approximation for economic
+      Representations, 2019.                                                              NMPC,” IEEE Trans. Autom. Control, vol. 66, no. 9, pp. 4206–4213,
+ [93] E. Aljalbout, N. Sotirakis, P. van der Smagt, M. Karl, and N. Chen,                 Sep. 2020.
+      “LIMT: Language-informed multi-task visual world models,” in Proc.            [118] M. Diehl, H. G. Bock, and J. P. Schlöder, “A real-time iteration scheme
+      IEEE Int. Conf. Robot. Automat., 2025, pp. 8226–8233.                               for nonlinear optimization in optimal feedback control,” SIAM J. control
+ [94] A. Nagabandi, G. Kahn, R. S. Fearing, and S. Levine, “Neural network                Optim., vol. 43, no. 5, pp. 1714–1736, 2005.
+      dynamics for model-based deep reinforcement learning with model-              [119] S. Gros, M. Zanon, R. Quirynen, A. Bemporad, and M. Diehl, “From
+      free fine-tuning,” in Proc. IEEE Int. Conf. Robot. Automat., 2018,                  linear to nonlinear MPC: Bridging the gap via the real-time iteration,”
+      pp. 7559–7566.                                                                      Int. J. Control, vol. 93, no. 1, pp. 62–80, 2020.
+ [95] K. Chua, R. Calandra, R. McAllister, and S. Levine, “Deep reinforcement       [120] R. Verschueren et al., “Acados–a modular open-source framework for
+      learning in a handful of trials using probabilistic dynamics models,” in            fast embedded optimal control,” Math. Program. Computation, vol. 14,
+      Proc. Adv. Neural Inf. Process. Syst., 2018, pp. 4759–4770.                         pp. 147–183, 2021.
+ [96] N. Hansen, H. Su, and X. Wang, “TD-MPC2: Scalable, robust world mod-          [121] R. S. Sutton, D. McAllester, S. Singh, and Y. Mansour, “Policy gradient
+      els for continuous control,” in Proc. Int. Conf. Learn. Representations,            methods for reinforcement learning with function approximation,” in
+      2024.                                                                               Proc. Adv. Neural Inf. Process. Syst., 1999, pp. 1057–1063.
+ [97] A. Nagabandi, K. Konolige, S. Levine, and V. Kumar, “Deep dynam-              [122] J. Schulman, F. Wolski, P. Dhariwal, A. Radford, and O. Klimov, “Prox-
+      ics models for learning dexterous manipulation,” in Proc. Conf. Robot               imal policy optimization algorithms,” 2017, arXiv:1707.06347.
+      Learn., 2020, pp. 1101–1112.                                                  [123] V. Feinberg, A. Wan, I. Stoica, M. I. Jordan, J. E. Gonzalez, and S. Levine,
+ [98] H. Sikchi, W. Zhou, and D. Held, “Learning off-policy with online                   “Model-based value estimation for efficient model-free reinforcement
+      planning,” in Proc. Conf. Robot Learn., 2022, pp. 1622–1633.                        learning,” 2018, arXiv:1803.00101.
+ [99] S. Cheng, L. Song, M. Kim, S. Wang, and N. Hovakimyan, “Difftune+ :           [124] L. Bauersfeld, E. Kaufmann, P. Foehn, S. Sun, and D. Scaramuzza,
+      Hyperparameter-free auto-tuning using auto-differentiation,” in Proc. 5th           “Neurobem: Hybrid aerodynamic quadrotor model,” in Proc. Robot.:
+      Annu. Learn. Dyn. Control Conf., Jun. 2023, pp. 170–183.                            Sci. Syst., vol. XVII, 2021, Art. no. 42.
+
+
+
+
+        Authorized licensed use limited to: Gyeongsang National Univ. Downloaded on March 14,2026 at 12:57:04 UTC from IEEE Xplore. Restrictions apply.
+692                                                                                                               IEEE TRANSACTIONS ON ROBOTICS, VOL. 42, 2026
+
+
+
+[125] Y. Song, S. Naji, E. Kaufmann, A. Loquercio, and D. Scaramuzza,                                           Yunlong Song (Member, IEEE) received the M.Sc.
+      “Flightmare: A flexible quadrotor simulator,” in Proc. 2020 Conf. Robot                                   degree in information and communication engineer-
+      Learn., 2021, vol. 155, pp. 1147–1157.                                                                    ing from Technical University of Darmstadt, Darm-
+[126] P. Foehn et al., “Agilicious: Open-source and open-hardware agile                                         stadt, Germany, in 2018, and the Ph.D. degree in
+      quadrotor for vision-based flight,” Sci. Robot., vol. 7, no. 67, 2022,                                    robotics, under the supervision of Prof. Davide Scara-
+      Art. no. eabl6259.                                                                                        muzza, with the Robotics and Perception Group, Uni-
+[127] E. Kaufmann, L. Bauersfeld, and D. Scaramuzza, “A benchmark com-                                          versity of Zurich, Zurich, Switzerland, in 2024.
+      parison of learned control policies for agile quadrotor flight,” in Proc.                                    His research interests include reinforcement learn-
+      Int. Conf. Robot. Automat., 2022, pp. 10504–10510.                                                        ing, machine learning, and robotics.
+[128] E. Aljalbout, F. Frank, M. Karl, and P. van der Smagt, “On the role of
+      the action space in robot manipulation learning and sim-to-real transfer,”
+      IEEE Robot. Automat. Lett., vol. 9, no. 6, pp. 5895–5902, Jun. 2024.
+[129] D. Hanover, P. Foehn, S. Sun, E. Kaufmann, and D. Scaramuzza,
+      “Performance, precision, and payloads: Adaptive nonlinear MPC for                                          Davide Scaramuzza (Fellow, IEEE) received the
+      quadrotors,” IEEE Robot. Automat. Lett., vol. 7, no. 2, pp. 690–697,                                       Ph.D. degree in robotics and computer vision from
+      Apr. 2022.                                                                                                 ETH Zurich, Zurich, Switzerland.
+[130] J. Schulman, P. Moritz, S. Levine, M. Jordan, and P. Abbeel, “High-                                           He is currently a Professor of robotics and percep-
+      dimensional continuous control using generalized advantage estimation,”                                    tion with the University of Zurich. He was a Postdoc
+      in Proc. Int. Conf. Learn. Representations, 2016.                                                          with the University of Pennsylvania, Philadelphia,
+                                                                                                                 PA, USA, and was a Visiting Professor with Stanford
+                                                                                                                 University, Stanford, CA, USA. He pioneered au-
+                                                                                                                 tonomous, vision-based navigation of drones, which
+                          Angel Romero (Member, IEEE) received the B.Sc.                                         inspired the navigation algorithm of the NASA Mars
+                          degree in electronics engineering from the Univer-                                     helicopter and many drone companies. He contributed
+                          sity of Malaga, Malaga, Spain, in 2015, the M.Sc.          significantly to visual-inertial state estimation, vision-based agile navigation of
+                          degree in “robotics, systems and control” from ETH         microdrones, and low-latency, robust perception with event cameras, which
+                          Zurich, Zurich, Switzerland, in 2018. He is currently      were transferred to many products, from drones to automobiles, cameras,
+                          working toward the Ph.D. degree in robotics, finding       AR/VR headsets, and mobile devices. In 2022, his team demonstrated that
+                          new limits in the intersection of machine learning,        an AI-controlled, vision-based drone could outperform the world champions
+                          optimal control, and computer vision applied to super      of drone racing, a result that was published in Nature. He is a consultant for
+                          agile autonomous quadrotor flight under the supervi-       the United Nations on disaster response, AI for good, and disarmament. His
+                          sion of Prof. Davide Scaramuzza, with the Robotics         research focuses on autonomous, agile microdrone navigation using standard
+                          and Perception Group, University of Zurich, Zurich,        and event-based cameras.
+                          Switzerland.                                                  Dr. Scaramuzza was the recipient of many awards, including an IEEE Tech-
+                                                                                     nical Field Award, the IEEE Robotics and Automation Society Early Career
+                                                                                     Award, a European Research Council Consolidator Grant, a Google Research
+                                                                                     Award, two NASA TechBrief Awards, and many paper awards. In 2015, he
+                                                                                     co-founded Zurich-Eye, today Meta Zurich, which developed the world-leading
+                            Elie Aljalbout received the Ph.D. degree from the        virtual-reality headset Meta Quest. In 2020, he co-founded SUIND, which builds
+                            Technical University of Munich, Germany, in 2024.        autonomous drones for precision agriculture. Many aspects of his research have
+                               He researched robot learning and manipulation         been featured in the media, such as The New York Times, The Economist, and
+                            at the Munich Institute of Robotics and Machine          Forbes.
+                            Intelligence. During his Ph.D., he was a Research
+                            Scientist with the Volkswagen Group Machine Learn-
+                            ing Research Lab, Munich, until 2024. From 2024
+                            to 2025, he was a Postdoctoral Researcher with the
+                            University of Zurich, Zurich, Switzerland, and an
+                            Associate Postdoctoral Researcher with the ETH AI
+                            Center, Zurich. Since 2025, he has been an Embodied
+AI Researcher with Meta AI (FAIR), focusing on world models, latent action
+modeling, and foundation models for robotic manipulation and embodied agents.
+His research interests include large-scale pretraining for robotics, world models,
+vision–language–action models, reinforcement learning, optimal control, and
+self-supervised learning.
+
+
+
+
+       Authorized licensed use limited to: Gyeongsang National Univ. Downloaded on March 14,2026 at 12:57:04 UTC from IEEE Xplore. Restrictions apply.
+

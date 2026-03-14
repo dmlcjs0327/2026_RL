@@ -1,0 +1,708 @@
+                                Skew-Fit: State-Covering Self-Supervised
+                                        Reinforcement Learning
+
+
+        Vitchyr H. Pong * 1 Murtaza Dalal * 1 Steven Lin * 1 Ashvin Nair 1 Shikhar Bahl 1 Sergey Levine 1
+
+
+                          Abstract
+     Autonomous agents that must exhibit flexible and
+     broad capabilities will need to be equipped with
+     large repertoires of skills. Defining each skill
+     with a manually-designed reward function limits
+     this repertoire and imposes a manual engineering
+     burden. Self-supervised agents that set their own                Figure 1. Left: Robot learning to open a door with Skew-Fit,
+     goals can automate this process, but designing                   without any task reward. Right: Samples from a goal distribution
+                                                                      when using (a) uniform and (b) Skew-Fit sampling. When used as
+     appropriate goal setting objectives can be diffi-
+                                                                      goals, the diverse samples from Skew-Fit encourage the robot to
+     cult, and often involves heuristic design decisions.             practice opening the door more frequently.
+     In this paper, we propose a formal exploration
+     objective for goal-reaching policies that maxi-
+     mizes state coverage. We show that this objective                required for the agent and the effort required for the user
+     is equivalent to maximizing goal reaching per-                   to design reward functions for each behavior. What if we
+     formance together with the entropy of the goal                   could instead design an unsupervised RL algorithm that
+     distribution, where goals correspond to full state               automatically explores the environment and iteratively dis-
+     observations. To instantiate this principle, we                  tills this experience into general-purpose policies that can
+     present an algorithm called Skew-Fit for learn-                  accomplish new user-specified tasks at test time?
+     ing a maximum-entropy goal distributions and
+     prove that, under regularity conditions, Skew-Fit                In the absence of any prior knowledge, an effective explo-
+     converges to a uniform distribution over the set                 ration scheme is one that visits as many states as possible,
+     of valid states, even when we do not know this                   allowing a policy to autonomously prepare for user-specified
+     set beforehand. Our experiments show that com-                   tasks that it might see at test time. We can formalize the
+     bining Skew-Fit for learning goal distributions                  problem of visiting as many states as possible as one of
+     with existing goal-reaching methods outperforms                  maximizing the state entropy H(S) under the current pol-
+     a variety of prior methods on open-sourced vi-                   icy.2 Unfortunately, optimizing this objective alone does not
+     sual goal-reaching tasks and that Skew-Fit en-                   result in a policy that can solve new tasks: it only knows
+     ables a real-world robot to learn to open a door,                how to maximize state entropy. In other words, to develop
+     entirely from scratch, from pixels, and without                  principled unsupervised RL algorithms that result in useful
+     any manually-designed reward function.                           policies, maximizing H(S) is not enough. We need a mech-
+                                                                      anism that allows us to reuse the resulting policy to achieve
+                                                                      new tasks at test-time.
+1. Introduction                                                       We argue that this can be accomplished by performing goal-
+                                                                      directed exploration: a policy should autonomously visit as
+Reinforcement learning (RL) provides an appealing formal-
+                                                                      many states as possible, but after autonomous exploration, a
+ism for automated learning of behavioral skills, but sepa-
+                                                                      user should be able to reuse this policy by giving it a goal
+rately learning every potentially useful skill becomes pro-
+                                                                      G that corresponds to a state that it must reach. While not
+hibitively time consuming, both in terms of the experience
+                                                                      all test-time tasks can be expressed as reaching a goal state,
+  *
+    Equal contribution 1 University of California, Berkeley. Corre-   a wide range of tasks can be represented in this way. Mathe-
+spondence to: Vitchyr H. Pong <vitchyr@eecs.berkeley.edu>.            matically, the goal-conditioned policy should minimize the
+Proceedings of the 37 th International Conference on Machine             2
+                                                                          We consider the distribution over terminal states in a finite
+Learning, Online, PMLR 119, 2020. Copyright 2020 by the au-           horizon task and believe this work can be extended to infinite
+thor(s).                                                              horizon stationary distributions.
+                              Skew-Fit: State-Covering Self-Supervised Reinforcement Learning
+
+conditional entropy over the states given a goal, H(S | G),       we maximize the mutual information between the state S
+so that there is little uncertainty over its state given a com-   and the goal G, I(S; G), as stated in Equation 1. This
+manded goal. This objective provides us with a principled         section discusses how to optimize Equation 1 by splitting
+way to train a policy to explore all states (maximize H(S))       the optimization into two parts: minimizing H(G | S) and
+such that the state that is reached can be determined by          maximizing H(G).
+commanding goals (minimize H(S | G)).
+Directly optimizing this objective is in general intractable,     2.1. Minimizing H(G | S): Goal-Conditioned
+since it requires optimizing the entropy of the marginal state         Reinforcement Learning
+distribution, H(S). However, we can sidestep this issue by        Standard RL considers a Markov decision process (MDP),
+noting that the objective is the mutual information between       which has a state space S, action space A, and unknown
+the state and the goal, I(S; G), which can be written as:         dynamics p(st+1 | st , at ) : S × S × A 7→ [0, +∞). Goal-
+                                                                  conditioned RL also includes a goal space G. For simplicity,
+  H(S) − H(S|G) = I(S; G) = H(G) − H(G|S). (1)                    we will assume in our derivation that the goal space matches
+                                                                  the state space, such that G = S, though the approach
+                                                                  extends trivially to the case where G is a hand-specified
+Equation 1 thus gives an equivalent objective for an unsu-        subset of S, such as the global XY position of a robot. A
+pervised RL algorithm: the agent should set diverse goals,        goal-conditioned policy π(a | s, g) maps a state s ∈ S and
+maximizing H(G), and learn how to reach them, minimiz-            goal g ∈ S to a distribution over actions a ∈ A, and its
+ing H(G | S).                                                     objective is to reach the goal, i.e., to make the current state
+While learning to reach goals is the typical objective studied    equal to the goal.
+in goal-conditioned RL (Kaelbling, 1993; Andrychowicz             Goal-reaching can be formulated as minimizing H(G | S),
+et al., 2017), setting goals that have maximum diversity is       and many practical goal-reaching algorithms (Kaelbling,
+crucial for effectively learning to reach all possible states.    1993; Lillicrap et al., 2016; Schaul et al., 2015; Andrychow-
+Acquiring such a maximum-entropy goal distribution is chal-       icz et al., 2017; Nair et al., 2018; Pong et al., 2018; Florensa
+lenging in environments with complex, high-dimensional            et al., 2018a) can be viewed as approximations to this objec-
+state spaces, where even knowing which states are valid           tive by observing that the optimal goal-conditioned policy
+presents a major challenge. For example, in image-based           will deterministically reach the goal, resulting in a condi-
+domains, a uniform goal distribution requires sampling uni-       tional entropy of zero: H(G | S) = 0. See Appendix E for
+formly from the set of realistic images, which in general is      more details. Our method may thus be used in conjunction
+unknown a priori.                                                 with any of these prior goal-conditioned RL methods in
+Our paper makes the following contributions. First, we pro-       order to jointly minimize H(G | S) and maximize H(G).
+pose a principled objective for unsupervised RL, based on
+Equation 1. While a number of prior works ignore the H(G)         2.2. Maximizing H(G): Setting Diverse Goals
+term, we argue that jointly optimizing the entire quantity is     We now turn to the problem of setting diverse goals or,
+needed to develop effective exploration. Second, we present       mathematically, maximizing the entropy of the goal distri-
+a general algorithm called Skew-Fit and prove that under          bution H(G). Let US be the uniform distribution over S,
+regularity conditions Skew-Fit learns a sequence of gener-        where we assume S has finite volume so that the uniform
+ative models that converges to a uniform distribution over        distribution is well-defined. Let qφG be the goal distribution
+the goal space, even when the set of valid states is unknown      from which goals G are sampled, parameterized by φ. Our
+(e.g., as in the case of images). Third, we describe a concrete   goal is to maximize the entropy of qφG , which we write as
+implementation of Skew-Fit and empirically demonstrate            H(G). Since the maximum entropy distribution over S is
+that this method achieves state of the art results compared       the uniform distribution US , maximizing H(G) may seem
+to a large number of prior methods for goal reaching with         as simple as choosing the uniform distribution to be our goal
+visually indicated goals, including a real-world manipula-        distribution: qφG = US . However, this requires knowing the
+tion task, which requires a robot to learn to open a door         uniform distribution over valid states, which may be difficult
+from scratch in about five hours, directly from images, and       to obtain when S is a subset of Rn , for some n. For example,
+without any manually-designed reward function.                    if the states correspond to images viewed through a robot’s
+                                                                  camera, S corresponds to the (unknown) set of valid images
+2. Problem Formulation                                            of the robot’s environment, while Rn corresponds to all
+                                                                  possible arrays of pixel values of a particular size. In such
+To ensure that an unsupervised reinforcement learning agent       environments, sampling from the uniform distribution Rn
+learns to reach all possible states in a controllable way,        is unlikely to correspond to a valid image of the real world.
+                                  Skew-Fit: State-Covering Self-Supervised Reinforcement Learning
+
+Sampling uniformly from S would require knowing the set                                     Without Skew-Fit         With Skew-Fit
+of all possible valid images, which we assume the agent
+does not know when starting to explore the environment.
+                                                                            Replay Buffer
+While we cannot sample arbitrary states from S, we can
+                                                                                  t
+sample states by performing goal-directed exploration. To
+derive and analyze our method, we introduce a simple model
+                                                                                                                              Skew
+of this process: a goal G ∼ qφG is sampled from the goal
+distribution qφG , and then the goal-conditioned policy π at-
+tempts to achieve this goal, which results in a distribution               Training Data
+of terminal states S ∈ S. We abstract this entire process
+by writing R the resulting marginal distribution over S as
+pSφ (S) , G qφG (G)p(S | G)dG, where the subscript φ in-                                              Fit                     Fit
+dicates that the marginal pSφ depends indirectly on qφG via
+the goal-conditioned policy π. We assume that pSφ has full
+support, which can be accomplished with an epsilon-greedy                 Proposed Goals
+goal reaching policy in a communicating MDP. We also                            pϕ
+assume that the entropy of the resulting state distribution
+H(pSφ ) is no less than the entropy of the goal distribution                                         �                        �
+H(qφG ). Without this assumption, a policy could ignore the
+goal and stay in a single state, no matter how diverse and
+                                                                            Replay Buffer
+realistic the goals are. 3 This simplified model allows us to                    t+1
+analyze the behavior of our goal-setting scheme separately
+from any specific goal-reaching algorithm. We will however
+show in Section 6 that we can instantiate this approach into a
+practical algorithm that jointly learns the goal-reaching pol-          Figure 2. Our method, Skew-Fit, samples goals for goal-
+                                                                        conditioned RL. We sample states from our replay buffer, and
+icy. In summary, our goal is to acquire a maximum-entropy
+                                                                        give more weight to rare states. We then train a generative model
+goal distribution qφG over valid states S, while only having            qφG t+1 with the weighted samples. By sampling new states with
+access to state samples from pSφ .                                      goals proposed from this new generative model, we obtain a higher
+                                                                        entropy state distribution in the next iteration.
+3. Skew-Fit: Learning a Maximum Entropy                                 The intuition behind our method is simple: rather than fit-
+   Goal Distribution                                                    ting a generative model to these samples sn , we skew the
+                                                                        samples so that rarely visited states are given more weight.
+Our method, Skew-Fit, learns a maximum entropy goal
+                                                                        See Figure 2 for a visualization of this process. How should
+distribution qφG using samples collected from a goal-
+                                                                        we skew the samples if we want to maximize the entropy of
+conditioned policy. We analyze the algorithm and show
+                                                                        qφGt+1 ? If we had access to the density of each state, pSφt (S),
+that Skew-Fit maximizes the goal distribution entropy, and
+present a practical instantiation for unsupervised deep RL.             then we could simply weight each state by 1/pSφt (S). We
+                                                                        could then perform maximum likelihood estimation (MLE)
+                                                                        for the uniform distribution by using the following impor-
+3.1. Skew-Fit Algorithm
+                                                                        tance sampling (IS) loss to train φt+1 :
+To learn a uniform distribution over valid goal states, we
+                                                                                     L(φ) = ES∼US log qφG (S)
+                                                                                                                 
+present a method that iteratively increases the entropy of
+a generative model qφG . In particular, given a generative
+                                                                                                      "                     #
+                                                                                                        US (S)         G
+model qφGt at iteration t, we want to train a new generative                              = ES∼pSφ               log qφ (S)
+                                                                                                    t   pSφt (S)
+model, qφGt+1 that has higher entropy. While we do not know                                           "                     #
+                                                              iid                                           1
+the set of valid states S, we could sample states sn ∼ pSφt                               ∝ ES∼pSφ               log qφG (S)
+using the goal-conditioned policy, and use the samples to
+                                                                                                    t   pSφt (S)
+train qφGt+1 . However, there is no guarantee that this would
+                                                                        where we use the fact that the uniform distribution US (S)
+increase the entropy of qφGt+1 .
+                                                                        has constant density for all states in S. However, computing
+   3
+       Note that this assumption does not require that the entropy of   this density pSφt (S) requires marginalizing out the MDP
+pS                                                                G
+ φ is strictly larger than the entropy of the goal distribution, qφ .
+                                                                        dynamics, which requires an accurate model of both the
+                                                                        dynamics and the goal-conditioned policy.
+                               Skew-Fit: State-Covering Self-Supervised Reinforcement Learning
+
+We avoid needing to model the entire MDP process by                Algorithm 1 Skew-Fit
+approximating pSφt (S) with our previous learned generative         1: for Iteration t = 1, 2, ... do
+model: pSφt (S) ≈ qφGt (S). We therefore weight each state          2:   Collect N states {sn }N   n=1 by sampling goals from
+by the following weight function                                         qφGt (or pskewed t−1 ) and running goal-conditioned pol-
+                                                                         icy.
+               wt,α (S) , qφGt (S)α ,   α < 0.              (2)     3:   Construct skewed distribution pskewedt (Equation 2
+                                                                         and Equation 3).
+where α is a hyperparameter that controls how heavily we
+                                                                    4:   Fit qφGt+1 to skewed distribution pskewedt using MLE.
+weight each state. If our approximation qφGt is exact, we
+                                                                    5: end for
+can choose α = −1 and recover the exact IS procedure
+described above. If α = 0, then this skew step has no              3.2. Skew-Fit Analysis
+effect. By choosing intermediate values of α, we trade off
+the reliability of our estimate qφGt (S) with the speed at which   This section provides conditions under which qφGt converges
+we want to increase the goal distribution entropy.                 in the limit to the uniform distribution over the state space
+                                                                   S. We consider the case where N → ∞, which allows us
+Variance Reduction As described, this procedure re-                to study the limit behavior of the goal distribution pskewedt .
+lies on IS, which can have high variance, particularly if          Our most general result is stated as follows:
+qφGt (S) ≈ 0. We therefore choose a class of generative mod-       Lemma 3.1. Let S be a compact set. Define the set of
+els where the probabilities are prevented from collapsing          distributions Q = {p : support(p) ⊆ S}. Let F :
+to zero, as we will describe in Section 4 where we provide         Q 7→ Q be continuous with respect to the pseudomet-
+generative model details. To further reduce the variance, we       ric dH (p, q) , |H(p) − H(q)| and H(F(p)) ≥ H(p) with
+train qφGt+1 with sampling importance resampling (SIR) (Ru-        equality if and only if p is the uniform probability distribu-
+bin, 1988) rather than IS. Rather than sampling from pSφt          tion on S, denoted as US . Define the sequence of distri-
+and weighting the update from each sample by wt,α , SIR            butions P = (p1 , p2 , . . . ) by starting with any p1 ∈ Q
+explicitly defines a skewed empirical distribution as              and recursively defining pt+1 = F(pt ). The sequence
+                                                                   P converges to US with respect to dH . In other words,
+                        1                                          limt→0 |H(pt ) − H(US )| → 0.
+         pskewedt (s) ,   wt,α (s)δ(s ∈ {sn }N n=1 )        (3)
+                       Zα
+                          N
+                          X                 iid
+                                                                   Proof. See Appendix Section A.1.
+                    Zα =     wt,α (sn ), sn ∼ pSφt ,
+                           n=1                                     We will apply Lemma 3.1 to be the map from pskewedt
+where δ is the indicator function and Zα is the normalizing        to pskewedt+1 to show that pskewedt converges to US . If
+coefficient. We note that computing Zα adds little compu-          we assume that the goal-conditioned policy and genera-
+tational overhead, since all of the weights already need to        tive model learning procedure are well behaved (i.e., the
+be computed. We then fit the generative model at the next          maps from qφGt to pSφt and from pskewedt to qφGt+1 are contin-
+iteration qφGt+1 to pskewedt using standard MLE. We found          uous), then to apply Lemma 3.1, we only need to show
+that using SIR resulted in significantly lower variance than       that H(pskewedt ) ≥ H(pSφt ) with equality if and only if
+IS. See Appendix B.2 for this comparision.                         pSφt = US . For the simple case when qφGt = pSφt identically
+                                                                   at each iteration, we prove the convergence of Skew-Fit true
+Goal Sampling Alternative Because qφGt+1 ≈ pskewedt , at           for any value of α ∈ [−1, 0) in Appendix A.3. However, in
+                                                                   practice, qφGt only approximates pSφt . To address this more
+iteration t + 1, one can sample goals from either qφGt+1 or
+                                                                   realistic situation, we prove the following result:
+pskewedt . Sampling goals from pskewedt may be preferred if
+sampling from the learned generative model qφGt+1 is compu-        Lemma 3.2. Given two distribution pSφt and qφGt where
+tationally or otherwise challenging. In either case, one still     pSφt  qφGt 4 and
+needs to train the generative model qφGt to create pskewedt . In
+                                                                                            log pSφt (S), log qφGt (S) > 0,
+                                                                                                                     
+our experiments, we found that both methods perform well.                    CovS∼pSφ                                            (4)
+                                                                                       t
+
+
+Summary Overall, Skew-Fit collects states from the en-             define the pskewedt as in Equation 3 and take N → ∞. Let
+vironment and resamples each state in proportion to Equa-          Hα (α) be the entropy of pskewedt for a fixed α. Then there
+tion 2 so that low-density states are resampled more often.        exists a constant a < 0 such that for all α ∈ [a, 0),
+Skew-Fit is shown in Figure 2 and summarized in Algo-
+                                                                                 H(pskewedt ) = Hα (α) > H(pSφt ).
+rithm 1. We now discuss conditions under which Skew-Fit
+                                                                        4
+converges to the uniform distribution.                                    p  q means that p is absolutely continuous with respect to
+                                                                   q, i.e. p(s) = 0 =⇒ q(s) = 0.
+                               Skew-Fit: State-Covering Self-Supervised Reinforcement Learning
+
+Proof. See Appendix Section A.2.                                   model qφG of Skew-Fit. To make the most use of the data,
+                                                                   we train qφG on all visited state rather than only the terminal
+This lemma tells us that our generative model qφGt does            states, which we found to work well in practice. To prevent
+not need to exactly fit the sampled states. Rather, we             the estimated state likelihoods from collapsing to zero, we
+merely need the log densities of qφGt and pSφt to be correlated,   model the posterior of the β-VAE as a multivariate Gaussian
+which we expect to happen frequently with an accurate goal-        distribution with a fixed variance and only learn the mean.
+conditioned policy, since pSφt is the set of states seen when      We summarize RIG and provide details for how we combine
+trying to reach goals from qφGt . In this case, if we choose       Skew-Fit and RIG in Appendix C.4 and describe how we
+negative values of α that are small enough, then the entropy       estimate the likelihoods given the β-VAE in Appendix C.1.
+of pskewedt will be higher than that of pSφt . Empirically, we
+found that α values as low as α = −1 performed well.               5. Related Work
+In summary, pskewedt converges to US under certain assump-
+                                                                   Many prior methods in the goal-conditioned reinforcement
+tions. Since we train each generative model qφGt+1 by fitting
+                                                                   learning literature focus on training goal-conditioned poli-
+it to pskewedt with MLE, qφGt will also converge to US .           cies and assume that a goal distribution is available to sam-
+                                                                   ple from during exploration (Kaelbling, 1993; Schaul et al.,
+4. Training Goal-Conditioned Policies with                         2015; Andrychowicz et al., 2017; Pong et al., 2018), or
+   Skew-Fit                                                        use a heuristic to design a non-parametric (Colas et al.,
+                                                                   2018b; Warde-Farley et al., 2018; Florensa et al., 2018a) or
+Thus far, we have presented Skew-Fit assuming that we have         parametric (Péré et al., 2018; Nair et al., 2018) goal distri-
+access to a goal-reaching policy, allowing us to separately        bution based on previously visited states. These methods
+analyze how we can maximize H(G). However, in practice             are largely complementary to our work: rather than propos-
+we do not have access to such a policy, and this section           ing a better method for training goal-reaching policies, we
+discusses how we concurrently train a goal-reaching policy.        propose a principled method for maximizing the entropy of
+Maximizing I(S; G) can be done by simultaneously per-              a goal sampling distribution, H(G), such that these policies
+forming Skew-Fit and training a goal-conditioned policy to         cover a wide range of states.
+minimize H(G | S), or, equivalently, maximize −H(G |               Our method learns without any task rewards, directly acquir-
+S). Maximizing −H(G | S) requires computing the density            ing a policy that can be reused to reach user-specified goals.
+log p(G | S), which may be difficult to compute without            This stands in contrast to exploration methods that modify
+strong modeling assumptions. However, for any distribution         the reward based on state visitation frequency (Bellemare
+q, the following lower bound on −H(G | S):                         et al., 2016; Ostrovski et al., 2017; Tang et al., 2017; Chen-
+                                                                   tanez et al., 2005; Lopes et al., 2012; Stadie et al., 2016;
+  −H(G | S) = E(G,S)∼q [log q(G | S)] + DKL (p k q)                Pathak et al., 2017; Burda et al., 2018; 2019; Mohamed &
+                ≥ E(G,S)∼q [log q(G | S)] ,                        Rezende, 2015; Tang et al., 2017; Fu et al., 2017). While
+                                                                   these methods can also be used without a task reward, they
+where DKL denotes Kullback–Leibler divergence as dis-              provide no mechanism for distilling the knowledge gained
+cussed by Barber & Agakov (2004). Thus, to minimize                from visiting diverse states into flexible policies that can be
+H(G | S), we train a policy to maximize the reward                 applied to accomplish new goals at test-time: their policies
+                                                                   visit novel states, and they quickly forget about them as other
+                  r(S, G) = log q(G | S).
+                                                                   states become more novel. Similarly, methods that prov-
+                                                                   ably maximize state entropy without using goal-directed
+The RL algorithm we use is reinforcement learning with             exploration (Hazan et al., 2019) or methods that define new
+imagined goals (RIG) (Nair et al., 2018), though in prin-          rewards to capture measures of intrinsic motivation (Mo-
+ciple any goal-conditioned method could be used. RIG is            hamed & Rezende, 2015) and reachability (Savinov et al.,
+an efficient off-policy goal-conditioned method that solves        2018) do not produce reusable policies.
+vision-based RL problems in a learned latent space. In par-
+ticular, RIG fits a β-VAE (Higgins et al., 2017) and uses it       Other prior methods extract reusable skills in the form of
+to encode observations and goals into a latent space, which        latent-variable-conditioned policies, where latent variables
+it uses as the state representation. RIG also uses the β-VAE       are interpreted as options (Sutton et al., 1999) or abstract
+to compute rewards, log q(G | S). Unlike RIG, we use the           skills (Hausman et al., 2018; Gupta et al., 2018b; Eysenbach
+goal distribution from Skew-Fit to sample goals for explo-         et al., 2019; Gupta et al., 2018a; Florensa et al., 2017). The
+ration and for relabeling goals during training (Andrychow-        resulting skills are diverse, but have no grounded interpreta-
+icz et al., 2017). Since RIG already trains a generative           tion, while Skew-Fit policies can be used immediately after
+model over states, we reuse this β-VAE for the generative          unsupervised training to reach diverse user-specified goals.
+                                Skew-Fit: State-Covering Self-Supervised Reinforcement Learning
+                                  Entropy Alpha Ablation                                                             10.0
+                                                                                                                                      Ant Exploration
+
+
+
+
+                                                                                                      Final XY-Distance
+                                      6                                                                                   7.5                                     HER
+                                                                                                                                                                  Rank-Based Priority
+
+
+
+
+                                Entropy
+                                                            Skew-Fit, α=-2.5
+                                      4                                                                                   5.0                                     Skew-Fit (Ours)
+                                                            Skew-Fit, α=-1
+                                                                                                                          2.5                                     DISCERN-g
+                                      2                     Skew-Fit, α=-0.5
+                                                                                                                                                                  AutoGoal GAN
+                                                            No Skew-Fit, (α=0)                                            0.0   1M   2M   3M 4M 5M      6M   7M
+                                      0     250K     500K                                                                                 Timesteps
+                                          Episodes
+
+                                                                                 Figure 4. (Left) Ant navigation environment. (Right) Evaluation
+Figure 3. Illustrative example of Skew-Fit on a 2D navigation task.              on reaching target XY position. We show the mean and standard
+(Left) Visited state plot for Skew-Fit with α = −1 and uniform                   deviation of 6 seeds. Skew-Fit significantly outperforms prior
+sampling, which corresponds to α = 0. (Right) The entropy of                     methods on this exploration task.
+the goal distribution per iteration, mean and standard deviation
+for 9 seeds. Entropy is calculated via discretization onto an 11x11              that primarily sets goal near the initial state distribution. In
+grid. Skew-Fit steadily increases the state entropy, reaching full               contrast, Skew-Fit results in quickly learning a high entropy,
+coverage over the state space.
+                                                                                 near-uniform distribution over the state space.
+Some prior methods propose to choose goals based on
+heuristics such as learning progress (Baranes & Oudeyer,                         Exploration with Skew-Fit We next evaluate Skew-Fit
+2012; Veeriah et al., 2018; Colas et al., 2018a), how off-                       while concurrently learning a goal-conditioned policy on a
+policy the goal is (Nachum et al., 2018), level of diffi-                        task with state inputs, which enables us study exploration
+culty (Florensa et al., 2018b), or likelihood ranking (Zhao &                    performance independently of the challenges with image
+Tresp, 2019). In contrast, our approach provides a principled                    observations. We evaluate on a task that requires training a
+framework for optimizing a concrete and well-motivated                           simulated quadruped “ant” robot to navigate to different XY
+exploration objective, can provably maximize this objective                      positions in a labyrinth, as shown in Figure 4. The reward is
+under regularity assumptions, and empirically outperforms                        the negative distance to the goal XY-position, and additional
+many of these prior work (see Section 6).                                        environment details are provided in Appendix D. This task
+                                                                                 presents a challenge for goal-directed exploration: the set of
+6. Experiments                                                                   valid goals is unknown due to the walls, and random actions
+                                                                                 do not result in exploring locations far from the start. Thus,
+Our experiments study the following questions: (1) Does                          Skew-Fit must set goals that meaningfully explore the space
+Skew-Fit empirically result in a goal distribution with in-                      while simultaneously learning to reach those goals.
+creasing entropy? (2) Does Skew-Fit improve exploration
+for goal-conditioned RL? (3) How does Skew-Fit compare                           We use this domain to compare Skew-Fit to a number of
+to prior work on choosing goals for vision-based, goal-                          existing goal-sampling methods. We compare to the rela-
+conditioned RL? (4) Can Skew-Fit be applied to a real-                           beling scheme described in the hindsight experience replay
+world, vision-based robot task?                                                  (labeled HER). We compare to curiosity-driven prioritiza-
+                                                                                 tion (Ranked-Based Priority) (Zhao et al., 2019), a variant
+                                                                                 of HER that samples goals for relabeling based on their
+Does Skew-Fit Maximize Entropy? To see the effects of
+                                                                                 ranked likelihoods. Florensa et al. (2018b) samples goals
+Skew-Fit on goal distribution entropy in isolation of learn-
+                                                                                 from a GAN based on the difficulty of reaching the goal.
+ing a goal-reaching policy, we study an idealized example
+                                                                                 We compare against this method by replacing qφG with the
+where the policy is a near-perfect goal-reaching policy. The
+                                                                                 GAN and label it AutoGoal GAN. We also compare to
+environment consists of four rooms (Sutton et al., 1999). At
+                                                                                 the non-parametric goal proposal mechanism proposed by
+the beginning of an episode, the agent begins in the bottom-
+                                                                                 (Warde-Farley et al., 2018), which we label DISCERN-g.
+right room and samples a goal from the goal distribution qφGt .
+                                                                                 Lastly, to demonstrate the difficulty of the exploration chal-
+To simulate stochasticity of the policy and environment, we
+                                                                                 lenge in these domains, we compare to #-Exploration (Tang
+add a Gaussian noise with standard deviation of 0.06 units
+                                                                                 et al., 2017), an exploration method that assigns bonus re-
+to this goal, where the entire environment is 11 × 11 units.
+                                                                                 wards based on the novelty of new states. We train the
+The policy reaches the state that is closest to this noisy goal
+                                                                                 goal-conditioned policy for each method using soft actor
+and inside the rooms, giving us a state sample sn for training
+                                                                                 critic (SAC) (Haarnoja et al., 2018). Implementation details
+qφGt . Due to the relatively small noise, the agent cannot rely
+                                                                                 of SAC and the prior works are given in Appendix C.3.
+on this stochasticity to explore the different rooms and must
+instead learn to set goals that are progressively farther and                    We see in Figure 4 that Skew-Fit is the only method that
+farther from the initial state. We compare multiple values                       makes significant progress on this challenging labyrinth lo-
+of α, where α = 0 corresponds to not using Skew-Fit. The                         comotion task. The prior methods on goal-sampling primar-
+β-VAE hyperparameters used to train qφGt are given in Ap-                        ily set goals close to the start location, while the extrinsic
+pendix C.2. As seen in Figure 3, sampling uniformly from                         exploration reward in #-Exploration dominated the goal-
+previous experience (α = 0) to set goals results in a policy                     reaching reward. These results demonstrate that Skew-Fit
+                                 Skew-Fit: State-Covering Self-Supervised Reinforcement Learning
+
+                                                                                                       Visual Door Opening                                        Visual Object Pickup
+                                                                                          0.40                                                            0.05
+                                                                                          0.35
+
+
+
+
+                                                                       Final Angle Difference
+
+
+
+
+                                                                                                                                        Final Object Distance
+                                                                                          0.30                                                            0.04
+                                                                                          0.25
+
+                                                                                          0.20                                                            0.03
+                                                                                          0.15
+
+                                                                                          0.10                                                            0.02
+                                                                                          0.05
+
+                                                                                          0.00                                                            0.01     100K       200K    300K
+                                                                                                 20K    30K    40K   50K   60K    70K
+                                                                                                              Timesteps                                                   Timesteps
+
+                                                                                                                                                                 RIG + Skew-Fit (Ours)
+                                                                                                       Visual Puck Pushing                                       RIG
+                                                                                                                                                                 RIG + # Exploration
+                                                                                          0.10
+                                                                                                                                                                 RIG + Hazan et al.
+
+
+
+
+                                                                       Final Puck Distance
+                                                                                                                                                                 RIG + AutoGoal GAN
+Figure 5. We evaluate on these continuous control tasks, from left                        0.08
+                                                                                                                                                                 RIG + DISCERN-g
+to right: Visual Door, a door opening task; Visual Pickup, a picking
+                                                                                                                                                                 RIG + HER
+task; Visual Pusher, a pushing task; and Real World Visual Door,                          0.06
+                                                                                                                                                                 RIG + Rank-Based Priority
+a real world door opening task. All tasks are solved from images
+                                                                                                                                                                 DISCERN
+and without any task-specific reward. See Appendix D for details.                         0.04         100K      200K      300K
+                                                                                                              Timesteps
+accelerates exploration by setting diverse goals in tasks with
+unknown goal spaces.                                                      Figure 6. Learning curves for simulated continuous control tasks.
+                                                                          Lower is better. We show the mean and standard deviation of 6
+Vision-Based Continuous Control Tasks We now evalu-                       seeds and smooth temporally across 50 epochs within each seed.
+ate Skew-Fit on a variety of image-based continuous control               Skew-Fit consistently outperforms RIG and various prior methods.
+tasks, where the policy must control a robot arm using only               See text for description of each method.
+image observations, there is no state-based or task-specific
+                                                                          across methods, we combine these prior methods with a
+reward, and Skew-Fit must directly set image goals. We test
+                                                                          policy trained using RIG. We additionally compare to Hazan
+our method on three different image-based simulated con-
+                                                                          et al. (2019), an exploration method that assigns bonus re-
+tinuous control tasks released by the authors of RIG (Nair
+                                                                          wards based on the likelihood of a state (labeled Hazan et
+et al., 2018): Visual Door, Visual Pusher, and Visual Pickup.
+                                                                          al.). Next, we compare to RIG without Skew-Fit. Lastly,
+These environments contain a robot that can open a door,
+                                                                          we compare to DISCERN (Warde-Farley et al., 2018), a
+push a puck, and lift up a ball to different configurations,
+                                                                          vision-based method which uses a non-parametric cluster-
+respectively. To our knowledge, these are the only goal-
+                                                                          ing approach to sample goals and an image discriminator to
+conditioned, vision-based continuous control environments
+                                                                          compute rewards.
+that are publicly available and experimentally evaluated in
+prior work, making them a good point of comparison. See                   We see in Figure 6 that Skew-Fit significantly outperforms
+Figure 5 for visuals and Appendix C for environment de-                   prior methods both in terms of task performance and sam-
+tails. The policies are trained in a completely unsupervised              ple complexity. The most common failure mode for prior
+manner, without access to any prior information about the                 methods is that the goal distributions collapse, resulting in
+image-space or any pre-defined goal-sampling distribution.                the agent learning to reach only a fraction of the state space,
+To evaluate their performance, we sample goal images from                 as shown in Figure 1. For comparison, additional samples
+a uniform distribution over valid states and report the agent’s           of qφG when trained with and without Skew-Fit are shown in
+final distance to the corresponding simulator states (e.g., dis-          Appendix B.3. Those images show that without Skew-Fit,
+tance of the object to the target object location), but the               qφG produces a small, non-diverse distribution for each en-
+agent never has access to this true uniform distribution nor              vironment: the object is in the same place for pickup, the
+the ground-truth state information during training. While                 puck is often in the starting position for pushing, and the
+this evaluation method is only practical in simulation, it                door is always closed. In contrast, Skew-Fit proposes goals
+provides us with a quantitative measure of a policy’s ability             where the object is in the air and on the ground, where the
+to reach a broad coverage of goals in a vision-based setting.             puck positions are varied, and the door angle changes.
+We compare Skew-Fit to a number of existing methods on                    We can see the effect of these goal choices by visualizing
+this domain. First, we compare to the methods described                   more example rollouts for RIG and Skew-Fit. These visuals,
+in the previous experiment (HER, Rank-Based Priority, #-                  shown in Figure 14 in Appendix B.3, show that RIG only
+Exploration, Autogoal GAN, and DISCERN-g). These                          learns to reach states close to the initial position, while Skew-
+methods that we compare to were developed in non-vision,                  Fit learns to reach the entire state space. For a quantitative
+state-based environments. To ensure a fair comparison                     comparison, Figure 7 shows the cumulative total exploration
+                                                           Skew-Fit: State-Covering Self-Supervised Reinforcement Learning
+
+                1000
+                                   Visual Object Pickup
+                                                                     RIG + Skew-Fit (Ours)                                              Real World Visual Door Opening
+                                                                                                                         100
+                                                                     RIG                                                                 Skew-Fit (Ours)
+                      800                                            RIG + # Exploration
+Exploration Pickups
+
+
+
+
+                                                                                                                               80
+
+
+
+
+                                                                                                        Cumulative Successes
+                                                                                                                                         RIG
+                                                                     RIG + Hazan et al.
+                      600                                                                                                      60
+                                                                     RIG + AutoGoal GAN
+                      400                                            RIG + DISCERN-g
+                                                                                                                               40
+                                                                     RIG + HER
+                      200                                            RIG + Rank-Based Priority                                 20
+                                                                     DISCERN
+                          0      100K       200K          300K                                                                  0 2.5    3.0    3.5     4.0     4.5    5.0    5.5   6.0
+                                        Timesteps                                                                                                 Interaction Time (Hours)
+                                                                                                       S1                                                                    S100         G
+  Figure 7. Cumulative total pickups during exploration for each
+  method. Prior methods fail to pay attention to the object: the rate
+  of pickups hardly increases past the first 100 thousand timesteps.
+  In contrast, after seeing the object picked up a few times, Skew-
+  Fit practices picking up the object more often by sampling the
+  appropriate exploration goals.
+
+
+   pickups for each method. From the graph, we see that many                                     Figure 8. (Top) Learning curve for Real World Visual Door. Skew-
+                                                                                                 Fit results in considerable sample efficiency gains over RIG on
+   methods have a near-constant rate of object lifts throughout
+                                                                                                 this real-world task. (Bottom) Each row shows the Skew-Fit policy
+   all of training. Skew-Fit is the only method that significantly
+                                                                                                 starting from state S1 and reaching state S100 while pursuing goal
+   increases the rate at which the policy picks up the object                                    G. Despite being trained from only images without any user-
+   during exploration, suggesting that only Skew-Fit sets goals                                  provided goals during training, the Skew-Fit policy achieves the
+   that encourage the policy to interact with the object.                                        goal image provided at test-time, successfully opening the door.
+
+                                                                                                 Additional Experiments To study the sensitivity of
+  Real-World Vision-Based Robotic Manipulation We                                                Skew-Fit to the hyperparameter α, we sweep α across the
+  also demonstrate that Skew-Fit scales well to the real world                                   values [−1, −0.75, −0.5, −0.25, 0] on the simulated image-
+  with a door opening task, Real World Visual Door, as shown                                     based tasks. The results are in Appendix B and demonstrate
+  in Figure 5. While a number of prior works have studied RL-                                    that Skew-Fit works across a large range of values for α, and
+  based learning of door opening (Kalakrishnan et al., 2011;                                     α = −1 consistently outperform α = 0 (i.e. outperforms no
+  Chebotar et al., 2017), we demonstrate the first method                                        Skew-Fit). Additionally, Appendix C provides a complete
+  for autonomous learning of door opening without a user-                                        description our method hyperparameters, including network
+  provided, task-specific reward function. As in simulation,                                     architecture and RL algorithm hyperparameters.
+  we do not provide any goals to the agent and simply let
+  it interact with the door, without any human guidance or
+  reward signal. We train two agents using RIG and RIG with                                      7. Conclusion
+  Skew-Fit. Every seven and a half minutes of interaction                                        We presented a formal objective for self-supervised goal-
+  time, we evaluate on 5 goals and plot the cumulative suc-                                      directed exploration, allowing researchers to quantify and
+  cesses for each method. Unlike in simulation, we cannot                                        compare progress when designing algorithms that enable
+  easily measure the difference between the policy’s achieved                                    agents to autonomously learn. We also presented Skew-Fit,
+  and desired door angle. Instead, we visually denote a bi-                                      an algorithm for training a generative model to approximate
+  nary success/failure for each goal based on whether the last                                   a uniform distribution over an initially unknown set of valid
+  state in the trajectory achieves the target angle. As Figure 8                                 states, using data obtained via goal-conditioned reinforce-
+  shows, standard RIG only starts to open the door after five                                    ment learning, and our theoretical analysis gives conditions
+  hours of training. In contrast, Skew-Fit learns to occasion-                                   under which Skew-Fit converges to the uniform distribution.
+  ally open the door after three hours of training and achieves                                  When such a model is used to choose goals for exploration
+  a near-perfect success rate after five and a half hours of                                     and to relabeling goals for training, the resulting method
+  interaction. Figure 8 also shows examples of successful                                        results in much better coverage of the state space, enabling
+  trajectories from the Skew-Fit policy, where we see that the                                   our method to explore effectively. Our experiments show
+  policy can reach a variety of user-specified goals. These                                      that when we concurrently train a goal-reaching policy us-
+  results demonstrate that Skew-Fit is a promising technique                                     ing self-generated goals, Skew-Fit produces quantifiable
+  for solving real world tasks without any human-provided                                        improvements on simulated robotic manipulation tasks, and
+  reward function. Videos of Skew-Fit solving this task and                                      can be used to learn a door opening skill to reach a 95%
+  the simulated tasks can be viewed on our website. 5                                            success rate directly on a real-world robot, without any
+                      5
+                          https://sites.google.com/view/skew-fit                                 human-provided reward supervision.
+                                 Skew-Fit: State-Covering Self-Supervised Reinforcement Learning
+
+8. Acknowledgement                                                      Florensa, C., Duan, Y., and Abbeel, P. Stochastic neural networks
+                                                                           for hierarchical reinforcement learning. In International Con-
+This research was supported by Berkeley DeepDrive,                         ference on Learning Representations (ICLR), 2017.
+Huawei, ARL DCIST CRA W911NF-17-2-0181, NSF IIS-
+                                                                        Florensa, C., Degrave, J., Heess, N., Springenberg, J. T., and
+1651843, and the Office of Naval Research, as well as Ama-                 Riedmiller, M. Self-supervised Learning of Image Embedding
+zon, Google, and NVIDIA. We thank Aviral Kumar, Car-                       for Continuous Control. In Workshop on Inference to Control
+los Florensa, Aurick Zhou, Nilesh Tripuraneni, Vickie Ye,                  at NeurIPS, 2018a.
+Dibya Ghosh, Coline Devin, Rowan McAllister, John D.                    Florensa, C., Held, D., Geng, X., and Abbeel, P. Automatic Goal
+Co-Reyes, various members of the Berkeley Robotic AI &                     Generation for Reinforcement Learning Agents. In Interna-
+Learning (RAIL) lab, and anonymous reviewers for their                     tional Conference on Machine Learning (ICML), 2018b.
+insightful discussions and feedback.
+                                                                        Fu, J., Co-Reyes, J. D., and Levine, S. EX 2 : Exploration with Ex-
+                                                                          emplar Models for Deep Reinforcement Learning. In Advances
+References                                                                in Neural Information Processing Systems (NIPS), 2017.
+
+Andrychowicz, M., Wolski, F., Ray, A., Schneider, J., Fong, R.,         Fujimoto, S., van Hoof, H., and Meger, D. Addressing Function
+  Welinder, P., Mcgrew, B., Tobin, J., Abbeel, P., and Zaremba,           Approximation Error in Actor-Critic Methods. In International
+  W. Hindsight Experience Replay. In Advances in Neural Infor-            Conference on Machine Learning (ICML), 2018.
+  mation Processing Systems (NIPS), 2017.
+                                                                        Gupta, A., Eysenbach, B., Finn, C., and Levine, S. Unsu-
+Baranes, A. and Oudeyer, P.-Y. Active Learning of Inverse Mod-            pervised meta-learning for reinforcement learning. CoRR,
+  els with Intrinsically Motivated Goal Exploration in Robots.            abs:1806.04640, 2018a.
+  Robotics and Autonomous Systems, 61(1):49–73, 2012. doi:              Gupta, A., Mendonca, R., Liu, Y., Abbeel, P., and Levine, S. Meta-
+  10.1016/j.robot.2012.05.008.                                            Reinforcement Learning of Structured Exploration Strategies.
+                                                                          In Advances in Neural Information Processing Systems (NIPS),
+Barber, D. and Agakov, F. V. Information maximization in noisy
+                                                                          2018b.
+  channels: A variational approach. In Advances in Neural Infor-
+  mation Processing Systems, pp. 201–208, 2004.                         Haarnoja, T., Zhou, A., Hartikainen, K., Tucker, G., Ha, S., Tan, J.,
+                                                                          Kumar, V., Zhu, H., Gupta, A., Abbeel, P., and Levine, S. Soft
+Bellemare, M., Srinivasan, S., Ostrovski, G., Schaul, T., Saxton, D.,     actor-critic algorithms and applications. CoRR, abs/1812.05905,
+  and Munos, R. Unifying count-based exploration and intrinsic            2018.
+  motivation. In Advances in Neural Information Processing
+  Systems (NIPS), pp. 1471–1479, 2016.                                  Hausman, K., Springenberg, J. T., Wang, Z., Heess, N., and Ried-
+                                                                          miller, M. Learning an Embedding Space for Transferable
+Burda, Y., Edwards, H., Storkey, A., and Klimov, O. Ex-                   Robot Skills. In International Conference on Learning Repre-
+  ploration by random network distillation. arXiv preprint                sentations (ICLR), pp. 1–16, 2018.
+  arXiv:1810.12894, 2018.
+                                                                        Hazan, E., Kakade, S. M., Singh, K., and Soest, A. V. Provably ef-
+Burda, Y., Edwards, H., Pathak, D., Storkey, A., Darrell, T., and         ficient maximum entropy exploration. International Conference
+  Efros, A. A. Large-scale study of curiosity-driven learning. In         on Machine Learning (ICML), 2019.
+  International Conference on Learning Representations (ICLR),
+  2019.                                                                 Higgins, I., Matthey, L., Pal, A., Burgess, C., Glorot, X., Botvinick,
+                                                                          M., Mohamed, S., and Lerchner, A. β-vae: Learning basic
+Chebotar, Y., Kalakrishnan, M., Yahya, A., Li, A., Schaal, S., and        visual concepts with a constrained variational framework. In-
+  Levine, S. Path integral guided policy search. In 2017 IEEE             ternational Conference on Learning Representations (ICLR),
+  International Conference on Robotics and Automation (ICRA),             2017.
+  pp. 3381–3388. IEEE, 2017.
+                                                                        Kaelbling, L. P. Learning to achieve goals. In International Joint
+Chentanez, N., Barto, A. G., and Singh, S. P. Intrinsically moti-         Conference on Artificial Intelligence (IJCAI), volume vol.2, pp.
+  vated reinforcement learning. In Advances in neural information         1094 – 8, 1993.
+  processing systems, pp. 1281–1288, 2005.                              Kalakrishnan, M., Righetti, L., Pastor, P., and Schaal, S. Learning
+                                                                          force control policies for compliant manipulation. In 2011
+Colas, C., Fournier, P., Sigaud, O., and Oudeyer, P. CURIOUS: in-         IEEE/RSJ International Conference on Intelligent Robots and
+  trinsically motivated multi-task, multi-goal reinforcement learn-       Systems, pp. 4639–4644. IEEE, 2011.
+  ing. CoRR, abs/1810.06284, 2018a.
+                                                                        Lillicrap, T. P., Hunt, J. J., Pritzel, A., Heess, N., Erez, T., Tassa,
+Colas, C., Sigaud, O., and Oudeyer, P.-Y. Gep-pg: Decoupling               Y., Silver, D., and Wierstra, D. Continuous control with deep
+  exploration and exploitation in deep reinforcement learning              reinforcement learning. In International Conference on Learn-
+  algorithms. International Conference on Machine Learning                 ing Representations (ICLR), 2016. ISBN 0-7803-3213-X. doi:
+  (ICML), 2018b.                                                          10.1613/jair.301.
+Eysenbach, B., Gupta, A., Ibarz, J., and Levine, S. Diversity is        Lopes, M., Lang, T., Toussaint, M., and Oudeyer, P.-Y. Explo-
+  All You Need: Learning Skills without a Reward Function. In             ration in model-based reinforcement learning by empirically
+  International Conference on Learning Representations (ICLR),            estimating learning progress. In Advances in Neural Informa-
+  2019.                                                                   tion Processing Systems, pp. 206–214, 2012.
+                                 Skew-Fit: State-Covering Self-Supervised Reinforcement Learning
+
+Mohamed, S. and Rezende, D. J. Variational information max-            Veeriah, V., Oh, J., and Singh, S. Many-goals reinforcement
+ imisation for intrinsically motivated reinforcement learning. In        learning. arXiv preprint arXiv:1806.09605, 2018.
+ Advances in neural information processing systems, pp. 2125–
+ 2133, 2015.                                                           Warde-Farley, D., de Wiele, T. V., Kulkarni, T., Ionescu, C.,
+                                                                         Hansen, S., and Mnih, V. Unsupervised control through non-
+Nachum, O., Brain, G., Gu, S., Lee, H., and Levine, S. Data-             parametric discriminative rewards. CoRR, abs/1811.11359,
+  Efficient Hierarchical Reinforcement Learning. In Advances in          2018.
+  Neural Information Processing Systems (NeurIPS), 2018.
+                                                                       Zhao, R. and Tresp, V. Curiosity-driven experience prioritization
+Nair, A., Pong, V., Dalal, M., Bahl, S., Lin, S., and Levine, S.         via density estimation. CoRR, abs/1902.08039, 2019.
+  Visual Reinforcement Learning with Imagined Goals. In Ad-
+  vances in Neural Information Processing Systems (NeurIPS),           Zhao, R., Sun, X., and Tresp, V. Maximum entropy-regularized
+  2018.                                                                  multi-goal reinforcement learning. In International Conference
+                                                                         on Machine Learning, pp. 7553–7562, 2019.
+Nielsen, F. and Nock, R. Entropies and cross-entropies of expo-
+  nential families. In Image Processing (ICIP), 2010 17th IEEE
+  International Conference on, pp. 3621–3624. IEEE, 2010.
+Ostrovski, G., Bellemare, M. G., Oord, A., and Munos, R. Count-
+  based exploration with neural density models. In International
+  Conference on Machine Learning (ICML), pp. 2721–2730,
+  2017.
+Pathak, D., Agrawal, P., Efros, A. A., and Darrell, T. Curiosity-
+  Driven Exploration by Self-Supervised Prediction. In Interna-
+  tional Conference on Machine Learning (ICML), pp. 488–489.
+  IEEE, 2017.
+Péré, A., Forestier, S., Sigaud, O., and Oudeyer, P.-Y. Unsuper-
+  vised Learning of Goal Spaces for Intrinsically Motivated Goal
+  Exploration. In International Conference on Learning Repre-
+  sentations (ICLR), 2018.
+Pong, V., Gu, S., Dalal, M., and Levine, S. Temporal Difference
+  Models: Model-Free Deep RL For Model-Based Control. In
+  International Conference on Learning Representations (ICLR),
+  2018.
+Rubin, D. B. Using the sir algorithm to simulate posterior distribu-
+  tions. Bayesian statistics, 3:395–402, 1988.
+Savinov, N., Raichuk, A., Marinier, R., Vincent, D., Pollefeys,
+  M., Lillicrap, T., and Gelly, S. Episodic curiosity through
+  reachability. arXiv preprint arXiv:1810.02274, 2018.
+Schaul, T., Horgan, D., Gregor, K., and Silver, D. Universal
+  Value Function Approximators. In International Conference
+  on Machine Learning (ICML), pp. 1312–1320, 2015. ISBN
+  9781510810587.
+Stadie, B. C., Levine, S., and Abbeel, P. Incentivizing Exploration
+   In Reinforcement Learning With Deep Predictive Models. In
+   International Conference on Learning Representations (ICLR),
+   2016.
+Sutton, R. S., Precup, D., and Singh, S. Between mdps and semi-
+  mdps: A framework for temporal abstraction in reinforcement
+  learning. Artificial intelligence, 112(1-2):181–211, 1999.
+Tang, H., Houthooft, R., Foote, D., Stooke, A., Chen, X., Duan,
+  Y., Schulman, J., De Turck, F., and Abbeel, P. #Exploration:
+  A Study of Count-Based Exploration for Deep Reinforcement
+  Learning. In Neural Information Processing Systems (NIPS),
+  2017.
+Todorov, E., Erez, T., and Tassa, Y. MuJoCo: A physics engine for
+  model-based control. In IEEE/RSJ International Conference on
+  Intelligent Robots and Systems (IROS), pp. 5026–5033, 2012.
+  ISBN 9781467317375. doi: 10.1109/IROS.2012.6386109.
+

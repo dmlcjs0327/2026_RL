@@ -1,0 +1,411 @@
+                                                                    This paper has been accepted for publication at the
+                                                IEEE International Conference on Robotics and Automation (ICRA), London 2023. ©IEEE
+
+
+                                                                           Learning Perception-Aware Agile Flight
+                                                                                 in Cluttered Environments
+                                                                  Yunlong Song∗1 , Kexin Shi∗1 , Robert Penicka2 , and Davide Scaramuzza1
+arXiv:2210.01841v2 [cs.RO] 3 Mar 2023
+
+
+
+
+                                                                                                                                 t = 0.14 s                 t = 0.62 s
+
+
+
+
+                                                                                                                                 t = 1.48 s                 t = 1.96 s
+                                        Fig. 1: Our approach focuses on learning navigation policies that map depth images to control commands. The task: flying
+                                        to a goal in minimum time by navigating through obstacles. (Left) We conducted an experiment using hardware-in-the-loop
+                                        simulation, where the vehicle was flown in a real indoor arena while camera images were simultaneously rendered in real-
+                                        time from a virtual-reality environment containing obstacles such as trees and walls. (Right) Four synthetic depth images
+                                        rendered during flight at different time steps.
+
+                                           Abstract— Recently, neural control policies have outper-                                       I. INTRODUCTION
+                                        formed existing model-based planning-and-control methods for
+                                        autonomously navigating quadrotors through cluttered envi-                        Vision-based navigation of micro aerial vehicles has re-
+                                        ronments in minimum time. However, they are not perception                     cently achieved impressive results outside of research labs,
+                                        aware, a crucial requirement in vision-based navigation due                    from exploring Mars to swarm navigation [1] and agile
+                                        to the camera’s limited field of view and the underactu-
+                                        ated nature of a quadrotor. We propose a learning-based
+                                                                                                                       flight in the wild [2]. However, existing methods focused
+                                        system that achieves perception-aware, agile flight in clut-                   on the general task of reaching a goal while navigating in
+                                        tered environments. Our method combines imitation learning                     cluttered unknown environments and much less on reaching
+                                        with reinforcement learning (RL) by leveraging a privileged                    the goal in minimum time (also known as time-optimal
+                                        learning-by-cheating framework. Using RL, we first train a                     flight). Additionally, in many scenarios, such as a search-
+                                        perception-aware teacher policy with full-state information to
+                                        fly in minimum time through cluttered environments. Then,
+                                                                                                                       and-rescue and reconnaissance in a known environment,
+                                        we use imitation learning to distill its knowledge into a vision-              these approaches are not ideally suited as they do not
+                                        based student policy that only perceives the environment via a                 leverage prior information about the environment that might
+                                        camera. Our approach tightly couples perception and control,                   be available.
+                                        showing a significant advantage in computation speed (10×                         In this work, we tackle the problem of vision-based,
+                                        faster) and success rate. We demonstrate the closed-loop control
+                                        performance using hardware-in-the-loop simulation.                             minimum-time flight in cluttered, known environments for
+                                                                                                                       quadrotor drones. Minimum-time flight requires the vehicle
+                                           Video: https://youtu.be/9q059CFGcVA                                         to operate on the edge of its physical limits (high speeds and
+                                                                                                                       accelerations) and perceptual limits (limited field of view,
+                                                                                                                       motion blur, limited sensing range, fast reaction times). The
+                                           ∗ These two authors contributed equally. 1 Y. Song, K. Shi, and D. Scara-
+                                                                                                                       limited field of view of the onboard camera is particularly
+                                        muzza are with the Robotics and Perception Group, Dep. of Informatics,
+                                        University of Zurich, and Dep. of Neuroinformatics, University of Zurich       constraining for quadrotors due to their underactuated nature:
+                                        and ETH Zurich, Switzerland (http://rpg.ifi.uzh.ch). 2 R. Penicka              in the most common configuration, all the rotors point in the
+                                        is with the Multi-robot Systems Group, Czech Technical University in           same direction, which causes the robot to accelerate only
+                                        Prague, Czech Republic. This work was supported by the Swiss National
+                                        Science Foundation (SNSF) through the National Centre of Competence in         in this direction. If the camera is rigidly attached to the
+                                        Research (NCCR) Robotics, the Czech Science Foundation (GAČR) under           drone, this means that a trade-off must be found between
+                                        research projects No. 23-06162M, the European Union’s Horizon 2020             maximizing flight performance and optimizing the visibility
+                                        Research and Innovation Programme under grant agreement No. 871479
+                                        (AERIAL-CORE), and the European Research Council (ERC) under grant             of regions of interest. We refer to this problem as perception-
+                                        agreement No. 864042 (AGILEFLIGHT).                                            aware flight [3], [4].
+   Recently, reinforcement learning-based methods [5], [6]          [11], whereas others rely on nonlinear programming [12] or
+have been proposed in order to address the planning and con-        searching-based planning [13]. Finally, a controller is used
+trol problem for minimum-time flight. In particular, [6] pre-       to follow the trajectory precisely, such as model predictive
+sented a neural network controller trained via reinforcement        control [4], [14] or differential-flatness-based control [15].
+learning that outperformed previous model-based planning-              Dividing the navigation task into a sequence of subtasks
+and-control methods in cluttered environments. Their con-           allows for simplifying the problem and parallelizing each
+troller maps ground-truth state observations directly to con-       component’s development, resulting in an interpretable sys-
+trol commands, forgoing the need for a high-level trajectory        tem from the engineering perspective. However, it leads to a
+planner and significantly reducing potential compounding            pipeline that is sensitive to unmodeled effects due to a lack
+errors and overall system latency. However, the learned con-        of interactions between each component. Also, the system
+troller is optimized only for maximizing the progress along         requires additional latency for passing or waiting for the
+a reference path while avoiding obstacles, and completely           information.
+ignores the perception constraint induced by the camera’s              Recently, learning-based methods attempted to address the
+field of view. As a result, there is no guarantee of visibility     aforementioned limitations. For instance, researchers [2] pro-
+of regions of interest (i.e., no perception awareness).             pose to directly map noisy sensory observations to collision-
+   We propose a vision-based navigation system to fly a             free trajectories in a receding-horizon fashion. This direct
+quadrotor through cluttered environments at high-speed with         mapping forgoes the need for 3D environment mapping and
+perception awareness. Our method combines imitation learn-          collision waypoints planning. Though it reduces processing
+ing and reinforcement learning (RL) by leveraging a privi-          latency and increases robustness to noisy perception, a
+leged learning-by-cheating framework. We begin by training          controller is still required to track the trajectory. Another
+a state-based teacher policy using deep RL to fly a minimum-        approach [16] leverages recent advances in neural radiance
+time trajectory in cluttered environments. This policy inte-        fields (NeRF) [17] to navigate a drone through a pre-mapped
+grates progress maximization and obstacle avoidance with            3D environment using only a monocular camera. However,
+a perception-aware reward that aligns the camera orientation        the navigation approach requires the offline construction of
+with the flight direction. Next, by imitating the teacher policy,   a NeRF for each new target environment, which can be
+we train a vision-based policy that does not rely on privileged     computationally expensive.
+information about the obstacles. The resulting vision-based            Some other works propose to learn end-to-end policies
+policy achieves high-speed flight and high success rates. We        directly from sensory observations to control commands
+show that our policy has very low computational latency             using imitation learning [18]–[20]. Without relying on an
+(just 1.4 ms) compared to classical methods with interme-           expert, deep reinforcement learning has the potential to find
+diate map representations that have 10 times higher latency.        more optimal policies for a variety of tasks. For aerial
+   To validate our approach, we test the closed-loop control        robots, Deep RL was successfully applied to multiple end-
+performance of our vision-based policy in the real world            to-end visual navigation tasks such as object following [21],
+using hardware-in-the-loop (HITL) simulation. HITL in-              exploration [22], and obstacle avoidance [23], [24].
+volves flying a physical quadrotor in a motion-capture system
+while observing virtual photorealistic environments that are                          III. METHODOLOGY
+updated in real-time. Unlike purely synthetic experiments,
+                                                                       The main goal of the presented controller is to fly a
+HITL simulation employs real-world dynamics and proprio-
+                                                                    quadrotor through cluttered environments as fast as possi-
+ceptive sensors while allowing us to render arbitrarily dense
+                                                                    ble. The quadrotor observes the environment using a depth
+and complex environments without risking a drone crash.
+                                                                    camera. Our policy controls the vehicle directly from the
+Our vision-based policy transfers to the real world despite
+                                                                    sensory observation.
+system delays and a mismatch of the vehicle model.
+                   II. RELATED WORK                                 A. Method Overview
+   Various approaches have been studied in the literature for          Figure 2 shows an overview of the system. We use a
+vision-based agile flight in cluttered environments. Partic-        simple privileged reinforcement learning framework to tackle
+ularly, in a traditional robotics design, the navigation task       high-dimensional observations. We first train a state-based
+is divided into mapping, planning, and control. This line           teacher policy using model-free deep reinforcement learning,
+of work first requires computationally-intensive algorithms,        in which the policy has access to privileged information
+such as Simultaneous Localization and Mapping (SLAM),               about the vehicle’s state and its surrounding environment.
+to infer the 3D structure of the environment from 2D noisy          This teacher policy is then distilled into a vision-based
+image data [1], [7]–[9]. Given a 3D map of an environment,          student policy that does not rely on privileged information.
+planning algorithms generate feasible trajectories that follow
+the shortest collision-free path from start to goal utiliz-         B. Learning State-based Teacher Policy
+ing the vehicle’s full dynamic capabilities. Some planning            Our teacher policy is a two-layer multilayer perceptron
+algorithms exploit the effective differential flatness of the       (MLP) that can achieve minimum-time flight in a cluttered
+platform using polynomial or B-spline representations [10],         environment [6]. The key idea of learning a teacher policy
+Fig. 2: System overview. First, we train a state-based teacher policy with access to privileged state information. Then we
+distill the teacher’s knowledge into a vision-based student policy. After finishing training in simulation, we directly deploy
+the vision-based student policy in the real world via hardware-in-the-loop (HITL) simulation.
+
+
+for minimum-time flight in cluttered environments is three-        distance reward, rwp is the reward for passing through a
+fold: 1) generation of a topological guiding path using a          corresponding waypoint, robs is the penalty for collision with
+probabilistic roadmap method, 2) optimization of a task            obstacles, kωk is the penalty for large angular velocity, rpa
+objective that combines progress maximization along the            is the perception-aware reward. In sparse environments (in-
+guiding path with obstacle avoidance, and 3) a curriculum          cluding Columns, Office, Racing, and Real Flight) (Sec. IV),
+training strategy to train a neural network policy using           the reward coefficients kp , ks , kwp , kobs , kω and kpa are 5.0,
+deep reinforcement learning. At each time step, the policy         0.01, 5.5, -0.5, -0.02 and 0.05 respectively. In the challenging
+directly controls the vehicle given an observation about the       Racing MW environment, kpa is set as 0.1 while keeping
+quadrotor’s full-state, a collision-free reference waypoint,       other coefficients the same.
+and a collision-free reference line segment. Learning a state-
+based policy is fast since it does not require rendering images    C. Learning Vision-based Student Policy
+for training.                                                         We use the trained teacher policy to supervise a vision-
+   Perception-aware Obstacle Avoidance: However, the               based student policy. Our student policy removes the as-
+previously proposed objective neglects the camera orienta-         sumption about perfect state information of the obstacles and
+tion, which is crucial for vision-based flight. Due to the         a reference collision-free line segment. Instead, the student
+camera’s limited field of view, it is imperative to align          policy reacts to obstacles purely based on the current obser-
+the camera orientation with the flight direction. For in-          vation from a depth camera. Specifically, our student policy
+stance, when navigating through an unknown environment,            extracts low-dimensional feature embeddings of the depth
+maximizing the visibility of the next waypoint allows for          image using a CNN autoencoder. Given the embeddings,
+counteracting unexpected scenarios. To this end, we com-           together with the current vehicle’s orientation and velocity,
+bine the minimum-time obstacle avoidance objective with            an MLP is used to regress the control commands.
+a perception-aware reward. The perception-aware reward is             To effectively reduce the dimension of depth images, we
+formulated as                                                      train an autoencoder [25] to learn low-dimensional feature
+                                                                   representations for the depth image. The encoder Eφ con-
+               rpa = exp(−kθyaw − θdir k),                  (1)
+                                                                   tains three convolution layers with decreasing image size
+where θyaw is the current yaw angle of camera and θdir is          and increasing receptive field gradually. Then a decoder
+the next flight direction defined by γ(t) − p(t). Here, γ(t) is    Dθ , which is a three-layers MLP, is used to reconstruct
+the farthest collision-free point on the reference path, namely,   the original images. We train this autoencoder using depth
+the vector γ(t) − p(t) does not intersect with the obstacles       images collected by the teacher policy. A standard L2 loss
+while maintaining longest segment length. It indicates both        is used for training the autoencoder:
+the flight direction and path length for the quadrotor to                                  T
+maximize progress. Finally, the stage reward is denoted as                             1X                           2
+                                                                           L(θ, φ) =         kI(t) − Dθ (Eφ (I(t)))k2 .          (2)
+                                                                                       T t=1
+           r(t) =kp rp (t) + ks s(p(t)) + kwp rwp
+                   + kobs robs + kω kωk + kpa rpa ,                After we obtain the optimal paremeter φ of encoder, we can
+                                                                   represent the depth images by its latent embedding z(t) =
+where rp (t) is the progress reward, s(p(t)) is the reached        Eφ (I(t)).
+   We use the pre-trained autoencoder to extract low-            implementation of the proximal policy optimization algo-
+dimensional feature representations for the input depth im-      rithm (PPO) [27] to train the teacher policy. We implement
+age. The image embedding z(t) generated by the encoder is        a CNN autoencoder to learn feature representations from
+normalized since it is beneficial for convergence empirically.   depth images and an imitation learning pipeline to distill
+We construct an observation vector by concatenating the          the teacher’s knowledge into a vision-based student policy,
+image embedding with the vehicle’s partial states, including        Simulation: We perform a set of controlled simulation ex-
+linear velocity v(t) and orientation R(q(t)). The observation    periments to compare our methods’ performance with several
+vector is then fed into an MLP to regress student’s action.      state-of-the-art baselines. For benchmark comparison, we use
+We define the action loss as                                     the same three environments from [6], denoted as Columns,
+                          T                                      Office, and Racing. We use two performance criteria for the
+                       1X                   2
+              L(ψ) =         ka(t) − a(t)|ψk2              (3)   evaluation: (1) average flight time from a given starting point
+                       T t=1                                     to the goal position and (2) success rate. The success rate is
+to minimize the difference between teacher’s action a(t) and     defined by starting the policy from different starting positions
+the output of student policy a(t), where ψ is the parameter      drawn from a uniform distribution with 20 runs. The results
+of student policy. Once we gain the optimal parameter ψ,         of these experiments are summarized in Table I.
+the vision-based student can imitate the state-based teacher’s      Furthermore, in terms of computation latency, we compare
+behavior to the maximum extent.                                  our policy against a mapping-based method [28], a reactive
+                                                                 method [29], and a learning-based method [2]. We define
+D. Hardware-in-the-loop Simulation                               computation latency as the time required to pre-process the
+   Developing vision-based navigation algorithms for             capture depth images and to generate the control commands.
+minimum-time agile flight is not only time-consuming but         The computation latency plays an important role when flying
+also expensive. This is due to the large amount of data          at high speed due to the limited sensing range of a physical
+required for training and testing perception algorithms          camera [30].
+in diverse environments, some of which can be even                  Real world: We deploy the vision-based policy in the
+harmful or risky to humans, such as collapsed buildings. It      real world using a high-performance racing drone and the
+progressively becomes less safe and more expensive since         Agilicious [31] control stack. We design a lightweight
+more aggressive flights can lead to devastating crashes.         quadrotor platform that has a total weight of 540 grams
+   We propose hardware-in-the-loop (HITL) simulation for         and can produce a maximum thrust of about 34 N, which
+evaluating vision-based policies using real-world physics and    results in a thrust-to-weight ratio around 6:1. We conduct
+virtual photorealistic environments. HITL simulation com-        our experiments in one of the world’s largest indoor drone-
+bines the advantage of both testing with a physical platform     testing arenas (30 × 30 × 8 m3 ) equipped with a motion
+and rendering diverse testing scenarios in an inexpensive        capture system with an operating frequency of up to 400 Hz.
+manner.
+   We use a motion capture system to capture accurate state      A. Baseline Comparisons
+information about the vehicle and simultaneously simulate           This section shows that a vision-based policy can nav-
+the vehicle’s motion in any virtual unstructured environment     igate the vehicle in cluttered environments reliably with-
+with arbitrary complexity. The policy has to control the         out privileged information about the state of the vehicle
+physical drone using synthetic images while handling sim-        and the obstacles. We compare the proposed vision-based
+to-real gaps introduced by the physical system, such as delay    perception-aware student policy with the non-perception-
+and vibration. When the policy experiences failures, such as     aware sampling-based method [32] and a state-based data-
+flying toward the ground, a safety guard that is based on a      driven method [6]. We use three different environments
+state-based controller is triggered. Hence, the drone is not     (Columns, Office, Racing), and in each, we test four cases
+damaged by virtual obstacles and is safe when the policy         with different starting points and goal positions. In the
+makes false decisions.                                           Racing environment, we additionally set multiple waypoints
+                                                                 (Racing MW) for the drone to pass through in order to
+                    IV. E XPERIMENTS
+                                                                 increase the difficulty of the track.
+   We evaluate our method in both controlled simulation             Table I shows the comparison results. The sampling-based
+environments and the real world. We first compare the            method [32] achieves overall very low success rates. This
+proposed vision-based policy against methods based on            is because the planned time-optimal trajectory by definition
+planning-and-control and the state-based policy. Second, we      pushes the vehicle to its maximum performance. When track-
+study the computational latency for our policy and show          ing such a trajectory using an obstacle-blind controller, such
+a comparison against state-of-the-art methods in collision       as model predictive control (MPC), the controller struggles
+avoidance. We verify our vision-based policy in the real         to follow the trajectory due to diminishing control authority.
+world using a high-performance racing drone and hardware-        As a result, such a planning-and-control pipeline is very
+in-the-loop simulation.                                          sensitive to unknown disturbances and model mismatches.
+   Policy Training: We train our neural network policy
+using the Flightmare [26] simulator. We use a customized           1 This result was obtained using the same track, but without looping.
+               (a) Columns                                 (b) Office                                (c) Racing / Racing MW
+Fig. 3: An overview of three environments used for baseline comparisons. The curves show two trajectories flown by
+the state-based teacher policy (red) and the vision-based student policy (green).
+
+TABLE I: Comparison between the baseline algorithm [32] and the proposed state-based and vision-based policies in non-
+and perception-aware mode.
+                                        Non-perception-aware                                       Perception-aware (ours)
+ Environment    Case   Sampling-based [32] + MPC [33]          State-based [6]         State-based (teacher)     Vision-based (student)
+                       Success[%]        Time[s]        Success[%]       Time[s]      Success[%]    Time[s]     Success[%]     Time[s]
+                 0         25             1.22             100          1.10±0.02        100       1.16±0.02       100        1.10±0.02
+                 1          0               -              100          1.10±0.02        100       1.10±0.03       100        1.10±0.03
+ Columns
+                 2         27             1.14             100          1.10±0.02        100       1.10±0.02       100        1.10±0.03
+                 3         16             1.70             100          1.40±0.04        100       1.46±0.04       100        1.39±0.04
+                 0         41             2.38             100          1.80±0.04        100       1.92±0.04       100        1.79±0.04
+                 1         28             1.86             100          1.80±0.03        100       1.82±0.02       100        1.76±0.02
+ Office
+                 2         56             2.29             100          1.62±0.02        100       1.66±0.03       100        1.63±0.03
+                 3         70             2.16             100          1.46±0.02        100       1.48±0.02       100        1.45±0.02
+                 0         57             1.61             100          1.33±0.03        100       1.32±0.02       100        1.33±0.03
+                 1         51             1.64             100          1.30±0.02        100       1.42±0.03       100        1.31±0.04
+ Racing
+                 2         76             1.72             100          1.42±0.02        100       1.44±0.02       100        1.43±0.02
+                 3         54             1.80             100          1.42±0.02        100       1.48±0.02       100        1.39±0.01
+ Racing MW       0         25             7.221            100          7.78±0.07        100       8.52±0.04       100        8.34±0.06
+
+
+
+On the contrary, data-driven methods can achieve a high              aware, policy.
+success rate by simulating diverse scenarios during training,
+including random disturbances, random initial starting points,
+and random physical parameters.                                      B. Computational Latency
+
+   Our vision-based policy achieves the same success rates              Our policy manifests a significant advantage in achieving
+as the state-based policy without relying on privileged in-          low computational latency. Table II shows a comparison of
+formation about the obstacle. However, due to minor ac-              the computational latency between our method and baseline
+tion errors, the student’s policy tends to exhibit undesired         methods. The latency is obtained from [2]. The FastPlan-
+riskier behaviors compared to the teacher’s policy. Specifi-         ner [28] method experiences the highest computational la-
+cally, the trajectory flown by the student policy often cuts         tency, mainly due to mapping. The reactive method [29]
+corners, resulting in a shorter path and faster lap time,            can significantly reduce the computation latency by taking
+but increased risks. To minimize the risk, we employ a               out the mapping component. The data-driven method [2]
+conservative distance margin; it implies that the distance           achieves a much faster computation speed with a total
+maintained between the vehicle and the obstacle is greater           latency of only 10.3 ms. Depending on which controller is
+than the minimum required distance to avoid collisions.              used for tracking the planned trajectory, additional latency
+Hence, the student policy can still achieve high success             caused by the controller should also be considered in the
+rates. Finally, we can see that the perception-aware policy          baseline methods. For instance, trajectory tracking using a
+does not have to sacrifice flight time compared to the non-          differential-flatness-based control has a computation time
+perception-aware state-based policy [6], with the exception          in the magnitude of only microseconds, while nonlinear
+of the Racing MW environment. In this specific scenario, the         MPC requires several milliseconds [34]. Finally, our reactive
+highly cluttered environment necessitates compromising the           vision-based policy achieves the fastest computation time of
+progress maximization objective with the alignment of the            only around 1.41 ms for conducting perception, planning and
+camera’s orientation, resulting in a slower, but perception-         control jointly.
+  TABLE II: Comparison of planning and control latency.                only prioritized maximizing progress along the path without
+                                                         Total Proc.   considering camera orientation. In contrast, perception-aware
+ Method        Components       µ[ms] σ[ms]   Prec.[%]
+                                                         Latency[ms]   flight led to higher lap times (8.52 s) since the policy had to
+               Pre-processing   14.6    2.3     22.3                   balance maximizing progress and aligning drone orientation
+ FastPlanner
+  [28]
+                  Mapping       49.2    8.7     75.5        65.2       to the next flight direction.
+                  Planning       1.4    1.6      2.2                      However, the non-perception-aware vision-based policy
+ Reactive      Pre-processing   13.8    1.3     72.3                   achieved a lower success rate because the camera orienta-
+                                                            19.1
+  [29]            Planning       5.3    0.9     27.7                   tion was not well-aligned with the flight direction, making
+ Agile         Pre-processing    0.1   0.04      3.9
+                                                                       it difficult to respond to upcoming obstacles in time. As
+ autonomy      NN inference     10.1    1.5     93.0        10.3
+  [2]                                                                  discussed in Section IV-A, due to action errors, the student
+                 Projection     0.08   0.01      3.1
+               Pre-processing   0.23   0.04     16.3
+                                                                       policy trajectory often cut corners, resulting in a shorter path
+ Ours                                                       1.41       (faster lap time) than the teacher policy but increased risk.
+               NN inference     1.18   0.08     83.7
+
+                                                                       TABLE III: Ablation study of the perception-aware reward.
+C. Hardware-in-the-Loop Flight                                                                                 Success[%]    Time[s]
+                                                                                               State-based        100       7.78±0.07
+   To test the closed-loop control performance of our neural              Non-perception-aware
+                                                                                               Vision-based        70       7.66±0.05
+network policy in the real world, we deploy our vision-based                                   State-based        100       8.52±0.04
+policy using hardware-in-the-loop simulation. A time-lapse                  Perception-aware
+                                                                                               Vision-based       100       8.34±0.06
+illustration of the real-world flight is shown in Figure 1,
+where we merge the simulated forest environment with the
+real-world arena for visualization purposes. Fig. 4 shows a                                   V. D ISCUSSION
+visualization of the real-world trajectory (yellow) and the               We have observed limitations in our policy’s robustness
+simulation trajectories by the teacher policy (green) and the          to random disturbances and its generalizability to other
+student policy (red). All trajectories are collision-free and          environments beyond its original training. We have identified
+have similar flight time. Our policy achieves a maximum                two main design choices as the cause: the neural network
+speed of 54.36 km h−1 in the real world using offboard                 architecture and the training pipeline.
+control, in which the control commands are computed using                 First, our control policy is solely reactive, lacking the capa-
+a workstation and sent to the drone via a remote transmitter.          bility to retain a memory or historical observations within the
+We achieved a control frequency of 50.0 Hz; this is possible           network. This shortcoming can be resolved through the use
+because our system has, on average, a total computational              of more advanced policy representations, such as Long Short-
+latency of only around 1.41 ms.                                        Term Memory (LSTM) [35] or Transformers [36]. These
+                                                                       architectures enable the network to effectively incorporate
+                                                                       past experiences, leading to a more robust and adaptable
+                                                                       control policy. Second, our policy is trained using a fixed
+                                                                       environment that does not account for sensor noises. To
+                                                                       address this limitation and enhance the policy’s robustness,
+                                                                       domain randomization along with data augmentation can be
+                                                                       leveraged in order to add variability and diversity to the
+                                                                       training data, resulting in a more versatile policy that can
+                                                                       better handle real-world scenarios with varying levels of
+                                                                       sensor noise.
+                                                                                   VI. C ONCLUSION AND D ISCUSSION
+                                                                          This paper presented a method to learn perception-aware
+                                                                       neural network policies for vision-based agile flight in
+Fig. 4: Vehicle’s trajectories from the real world (yellow),           cluttered environments. Our method leverages a privileged
+from simulation with teacher policy (red), and simulation              learning-by-cheating framework to achieve efficient training.
+with student policy (green).                                           As a result, our work demonstrates an end-to-end policy
+                                                                       that can achieve strong performance in high-speed flight
+                                                                       in cluttered environments while also providing significant
+D. On the Importance of Perception-Aware Flight                        computational advantages. Our results in the real world via
+   We conduct an ablation study to evaluate the impact of per-         HITL suggest that end-to-end policies represent a promising
+ception awareness on vision-based flight in the challenging            approach for enabling agile flight in challenging real-world
+Racing MW environment. The results are presented in Table              scenarios.
+III. We observed that the vehicle achieved faster lap times
+(7.78 s) when flying non-perception-aware since the policy
+                             R EFERENCES                                             control in cluttered natural environments,” in 2013 IEEE international
+                                                                                     conference on robotics and automation. IEEE, 2013, pp. 1765–1772.
+ [1] X. Zhou, X. Wen, Z. Wang, Y. Gao, H. Li, Q. Wang, T. Yang, H. Lu,          [19] F. Sadeghi and S. Levine, “Cad2rl: Real single-image flight without a
+     Y. Cao, C. Xu et al., “Swarm of micro flying robots in the wild,”               single real image,” arXiv preprint arXiv:1611.04201, 2016.
+     Science Robotics, vol. 7, no. 66, p. eabm5954.                             [20] T. Zhang, G. Kahn, S. Levine, and P. Abbeel, “Learning deep con-
+ [2] A. Loquercio, E. Kaufmann, R. Ranftl, M. Müller, V. Koltun, and                trol policies for autonomous aerial vehicles with mpc-guided policy
+     D. Scaramuzza, “Learning high-speed flight in the wild,” Science                search,” in 2016 IEEE international conference on robotics and
+     Robotics, vol. 6, no. 59, p. eabg5810, 2021.                                    automation (ICRA). IEEE, 2016, pp. 528–535.
+ [3] D. Falanga, E. Mueggler, M. Faessler, and D. Scaramuzza,                   [21] C. Sampedro, A. Rodriguez-Ramos, I. Gil, L. Mejias, and P. Campoy,
+     “Aggressive quadrotor flight through narrow gaps with onboard                   “Image-based visual servoing controller for multirotor aerial robots
+     sensing and computing using active vision,” in IEEE Int. Conf. Robot.           using deep reinforcement learning,” in 2018 IEEE/RSJ International
+     Autom. (ICRA). IEEE, 2017, pp. 5774–5781. [Online]. Available:                  Conference on Intelligent Robots and Systems (IROS), 2018, pp. 979–
+     https://doi.org/10.1109/ICRA.2017.7989679                                       986.
+ [4] D. Falanga, P. Foehn, P. Lu, and D. Scaramuzza, “Pampc: Perception-        [22] A. Devo, J. Mao, G. Costante, and G. Loianno, “Autonomous single-
+     aware model predictive control for quadrotors,” in IEEE/RSJ Int. Conf.          image drone exploration with deep reinforcement learning and mixed
+     Intell. Robot. Syst. (IROS). IEEE, 2018, pp. 1–8.                               reality,” IEEE Robotics and Automation Letters, vol. 7, no. 2, 2022.
+ [5] Y. Song, M. Steinweg, E. Kaufmann, and D. Scaramuzza, “Au-                 [23] A. Singla, S. Padakandla, and S. Bhatnagar, “Memory-based
+     tonomous drone racing with deep reinforcement learning,” in                     deep reinforcement learning for obstacle avoidance in uav with
+     IEEE/RSJ Int. Conf. Intell. Robot. Syst. (IROS), 2021.                          limited environment knowledge,” Trans. Intell. Transport. Syst.,
+ [6] R. Penicka, Y. Song, E. Kaufmann, and D. Scaramuzza, “Learning                  vol. 22, no. 1, p. 107–118, jan 2021. [Online]. Available:
+     minimum-time flight in cluttered environments,” IEEE Robotics and               https://doi.org/10.1109/TITS.2019.2954952
+     Automation Letters, vol. 7, no. 3, pp. 7209–7216, 2022.                    [24] M. Kim, J. Kim, M. Jung, and H. Oh, “Towards monocular
+ [7] L. Heng, D. Honegger, G. H. Lee, L. Meier, P. Tanskanen, F. Fraundor-           vision-based autonomous flight through deep reinforcement learning,”
+     fer, and M. Pollefeys, “Autonomous visual mapping and exploration               Expert Systems with Applications, vol. 198, p. 116742, 2022.
+     with a micro aerial vehicle,” Journal of Field Robotics, vol. 31, no. 4,        [Online]. Available: https://www.sciencedirect.com/science/article/pii/
+     pp. 654–675, 2014.                                                              S0957417422002111
+ [8] D. Scaramuzza, M. C. Achtelik, L. Doitsidis, F. Friedrich,                 [25] G. E. Hinton and R. R. Salakhutdinov, “Reducing the dimensionality
+     E. Kosmatopoulos, A. Martinelli, M. W. Achtelik, M. Chli,                       of data with neural networks,” science, vol. 313, no. 5786, pp. 504–
+     S. Chatzichristofis, L. Kneip et al., “Vision-controlled micro flying           507, 2006.
+     robots: from system design to autonomous navigation and mapping in         [26] Y. Song, S. Naji, E. Kaufmann, A. Loquercio, and D. Scaramuzza,
+     gps-denied environments,” IEEE Robotics & Automation Magazine,                  “Flightmare: A flexible quadrotor simulator,” in Conference on Robot
+     vol. 21, no. 3, pp. 26–40, 2014.                                                Learning, 2020.
+ [9] M. Blösch, S. Weiss, D. Scaramuzza, and R. Siegwart, “Vision based        [27] J. Schulman, F. Wolski, P. Dhariwal, A. Radford, and O. Klimov,
+     mav navigation in unknown and unstructured environments,” in 2010               “Proximal policy optimization algorithms,” arXiv preprint
+     IEEE International Conference on Robotics and Automation. IEEE,                 arXiv:1707.06347, 2017.
+     2010, pp. 21–28.                                                           [28] B. Zhou, F. Gao, L. Wang, C. Liu, and S. Shen, “Robust and efficient
+[10] D. Mellinger and V. Kumar, “Minimum snap trajectory generation                  quadrotor trajectory generation for fast autonomous flight,” IEEE
+     and control for quadrotors,” in IEEE Int. Conf. Robot. Autom. (ICRA),           Robotics and Automation Letters, vol. 4, no. 4, pp. 3529–3536, 2019.
+     2011, pp. 2520–2525.                                                       [29] P. Florence, J. Carter, and R. Tedrake, “Integrated perception and
+[11] C. Richter, A. Bry, and N. Roy, “Polynomial trajectory planning for             control at high speed: Evaluating collision avoidance maneuvers
+     aggressive quadrotor flight in dense indoor environments,” 2013.                without maps,” in Algorithmic Foundations of Robotics XII. Springer,
+[12] P. Foehn, A. Romero, and D. Scaramuzza, “Time-optimal planning                  2020, pp. 304–319.
+     for quadrotor waypoint flight,” Science Robotics, vol. 6, no. 56, p.       [30] D. Falanga, S. Kim, and D. Scaramuzza, “How fast is too fast? the
+     eabh1221, 2021.                                                                 role of perception latency in high-speed sense and avoid,” IEEE Robot.
+[13] S. Liu, K. Mohta, N. Atanasov, and V. Kumar, “Search-based motion               Autom. Lett., vol. 4, no. 2, pp. 1884–1891, Apr. 2019.
+     planning for aggressive flight in se (3),” IEEE Robotics and Automa-       [31] P. Foehn, E. Kaufmann, A. Romero, R. Penicka, S. Sun, L. Bauersfeld,
+     tion Letters, vol. 3, no. 3, pp. 2439–2446, 2018.                               T. Laengle, G. Cioffi, Y. Song, A. Loquercio et al., “Agilicious: Open-
+[14] Y. Song and D. Scaramuzza, “Policy search for model predictive                  source and open-hardware agile quadrotor for vision-based flight,”
+     control with application to agile drone flight,” IEEE Transactions on           Science Robotics, vol. 7, no. 67, p. eabl6259, 2022.
+     Robotics, pp. 1–17, 2022.                                                  [32] R. Penicka and D. Scaramuzza, “Minimum-time quadrotor waypoint
+[15] M. Faessler, A. Franchi, and D. Scaramuzza, “Differential flatness              flight in cluttered environments,” IEEE Robotics and Automation
+     of quadrotor dynamics subject to rotor drag for accurate tracking of            Letters, vol. 7, no. 2, pp. 5719–5726, 2022.
+     high-speed trajectories,” IEEE Robotics and Automation Letters, vol. 3,    [33] P. Foehn, A. Romero, and D. Scaramuzza, “Time-optimal planning
+     no. 2, pp. 620–626, 2017.                                                       for quadrotor waypoint flight,” Science Robotics, vol. 6, no. 56,
+[16] M. Adamkiewicz, T. Chen, A. Caccavale, R. Gardner, P. Culbertson,               2021. [Online]. Available: https://robotics.sciencemag.org/content/6/
+     J. Bohg, and M. Schwager, “Vision-only robot navigation in a neural             56/eabh1221
+     radiance world,” IEEE Robotics and Automation Letters, vol. 7, no. 2,      [34] S. Sun, A. Romero, P. Foehn, E. Kaufmann, and D. Scaramuzza,
+     pp. 4606–4613, 2022.                                                            “A comparative study of nonlinear mpc and differential-flatness-based
+[17] B. Mildenhall, P. P. Srinivasan, M. Tancik, J. T. Barron, R. Ramamoor-          control for quadrotor agile flight,” IEEE Transactions on Robotics,
+     thi, and R. Ng, “Nerf: Representing scenes as neural radiance fields            2022.
+     for view synthesis,” Communications of the ACM, vol. 65, no. 1, pp.        [35] S. Hochreiter and J. Schmidhuber, “Long short-term memory,” Neural
+     99–106, 2021.                                                                   computation, vol. 9, no. 8, pp. 1735–1780, 1997.
+[18] S. Ross, N. Melik-Barkhudarov, K. S. Shankar, A. Wendel, D. Dey,           [36] A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N.
+     J. A. Bagnell, and M. Hebert, “Learning monocular reactive uav                  Gomez, Ł. Kaiser, and I. Polosukhin, “Attention is all you need,”
+                                                                                     Advances in neural information processing systems, vol. 30, 2017.
+

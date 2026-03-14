@@ -1,0 +1,1647 @@
+3044                                                                                                     IEEE TRANSACTIONS ON ROBOTICS, VOL. 40, 2024
+
+
+
+
+                       Autonomous Drone Racing: A Survey
+             Drew Hanover , Antonio Loquercio , Leonard Bauersfeld , Graduate Student Member, IEEE,
+                Angel Romero , Graduate Student Member, IEEE, Robert Penicka , Yunlong Song ,
+                     Giovanni Cioffi , Student Member, IEEE, Elia Kaufmann , Member, IEEE,
+                                  and Davide Scaramuzza , Senior Member, IEEE
+
+                                                                      (Survey Paper)
+
+
+
+   Abstract—Over the last decade, the use of autonomous drone sys-               was thought to have run a race at the Sed festival to demonstrate
+tems for surveying, search and rescue, or last-mile delivery has in-             his physical fitness, indicating his ability to rule over the king-
+creased exponentially. With the rise of these applications comes the             dom [1], [2]. As time has progressed, humans have moved from
+need for highly robust, safety-critical algorithms that can operate
+drones in complex and uncertain environments. In addition, flying                racing on-foot to using chariots, cars, planes, and more recently,
+fast enables drones to cover more ground, increasing productivity                quadcopters [3]. Although the vessel frequently changes, one
+and further strengthening their use case. One proxy for developing               thing that has remained constant since the early days of racing
+algorithms used in high-speed navigation is the task of autonomous               has been the recurring theme of using the task as a catalyst for
+drone racing (ADR), where researchers program drones to fly                      scientific and engineering development. Recently, we have seen
+through a sequence of gates and avoid obstacles as quickly as
+possible using onboard sensors and limited computational power.                  a push to remove humans from the loop, automating the highly
+Speeds and accelerations exceed over 80 km/h and 4 g, respectively,              complex task of racing in order to push vehicle performance
+raising significant challenges across perception, planning, control,             beyond what humans can achieve [4], [5].
+and state estimation. To achieve maximum performance, systems
+require real-time algorithms that are robust to motion blur, high dy-            A. Why Autonomous Drone Racing (ADR)?
+namic range, model uncertainties, aerodynamic disturbances, and
+often unpredictable opponents. This survey covers the progression                   Drone racing is a popular sport with high-profile international
+of ADR across model-based and learning-based approaches. In this                 competitions. In a traditional drone race, each vehicle is con-
+article, we provide an overview of the field, its evolution over the
+years, and conclude with the biggest challenges and open questions
+                                                                                 trolled by a human pilot, who receives a first-person-view (FPV)
+to be faced in the future.                                                       live stream from an onboard camera and flies the drone via a
+                                                                                 radio transmitter. An onboard image from the drone can be seen
+  Index Terms—Autonomous robots, autonomous aerial vehicles,                     in Fig. 1(b). Having access to an FPV feed sets drone racing apart
+drones.
+                                                                                 from remote-controlled fixed-wing aircraft racing, where pilots
+                                                                                 typically control the vehicle in a line-of-sight fashion. Human
+                           I. INTRODUCTION                                       drone pilots need years of training to master the advanced
+                                                                                 navigation and control skills required to succeed in international
+      HROUGHOUT history, humans have been obsessed with
+T     racing competitions, where physical and mental fitness are
+put to the test. The earliest mention of a formal race dates all
+                                                                                 competitions. Such skills would also be valuable to autonomous
+                                                                                 systems that must fly through complex environments in appli-
+                                                                                 cations such as disaster response, aerial delivery, and inspec-
+the way back to 3000 BC in ancient Egypt, where the Pharaoh
+                                                                                 tion of complex structures. For example, automating inspection
+                                                                                 tasks can save lives while being more productive than manual
+   Manuscript received 1 February 2024; accepted 3 March 2024. Date of           inspection. According to a recent survey on unmanned aerial
+publication 14 May 2024; date of current version 6 June 2024. This paper was
+recommended for publication by Associate Editor Giuseppe Loianno and Editor      vehicle (UAV) use in bridge inspection [6], most drones used for
+Paolo Robuffo Giordano upon evaluation of the reviewers’ comments. This work     inspection tasks rely on GPS navigation with the biggest limiting
+was supported in part by the Swiss National Science Foundation (SNSF) through    factor on inspection efficiency being the drones’ endurance
+the National Centre of Competence in Research (NCCR) Robotics, the Czech
+Science Foundation (GACR) under research project 23-06162M, in part by the       and mobility. In addition, the most popular drones used for
+European Union’s Horizon 2020 Research and Innovation Programme under            surveying by several US Departments of Transportation are not
+Grant 871479 (AERIAL-CORE), and in part by the European Research Council         fully autonomous and require expert human pilots [6]. In these
+(ERC) under Grant 864042 (AGILEFLIGHT). (Corresponding author: Leonard
+Bauersfeld.)                                                                     applications, an increase in autonomy and operational speed will
+   Drew Hanover, Leonard Bauersfeld, Angel Romero, Yunlong Song, Giovanni        offer gains in utility as faster flight increases the operating radius
+Cioffi, Elia Kaufmann, and Davide Scaramuzza are with the Robotics and           achievable with a given battery [7]. Drone racing research has
+Perception Group, University of Zürich, 8050 Zürich, Switzerland (e-mail:
+bauersfeld@ifi.uzh.ch).                                                          made significant progress in bringing the skills of autonomous
+   Antonio Loquercio is with the University of California, Berkeley (UC Berke-   drones closer to those of professional human pilots [5]. This
+ley), Berkeley, CA 4720 USA.                                                     required advances on all parts of the flight stack, i.e., estimation,
+   Robert Penicka is with the Multi-Robot Systems Group, Czech Technical
+University in Prague, 160 00 Prague, Czech Republic.                             planning, control, and hardware [8], which we cover in length
+   Digital Object Identifier 10.1109/TRO.2024.3400838                            in this survey. However, several challenges remain to bridge the
+                   © 2024 The Authors. This work is licensed under a Creative Commons Attribution 4.0 License. For more information, see
+                                                        https://creativecommons.org/licenses/by/4.0/
+HANOVER et al.: AUTONOMOUS DRONE RACING: A SURVEY                                                                                                         3045
+
+
+
+
+Fig. 1. Drone racing is a sport rapidly gaining popularity where opponents compete on a predefined race track consisting of a series of gates. ADR research
+aims to build algorithms that can outperform human pilots in such competitions. (a) Task of ADR has gained a substantial amount of interest from the research
+community in the last few years, as indicated by the increasing number of related publications per year, as evidenced by a Google Scholar search for “ADR.”
+(b) Autonomous drones rely on visual and inertial sensors to estimate their own states, as well as their opponents’ states. (c) Agile maneuvers are required to
+overtake opponents and win the race.
+
+
+
+
+Fig. 2.   History of drone racing competitions that use real drones for navigating the race track, IROS ADR II photo credit [10].
+
+
+
+gap between drone racing and real-world applications, such as                      GNSS-denied and confined critical infrastructure. Competitions
+safety [9] and generalization over tasks and environments.                         such as the International Conference on Intelligent Robots and
+   Over the last five years, several projects have been launched                   Systems (IROS 2016–2019) ADR series [14], NeurIPS 2019’s
+to encourage rapid progress within the field, such as DARPA’s                      Game of Drones [15], and the 2019 AlphaPilot Challenge [16],
+Fast Lightweight Autonomy [11], European Research Coun-                            [17] provided further opportunity for researchers to compare
+cil’s AgileFlight [12], and the AutoAssess project [13]. With                      their methodologies against one another in a competitive fash-
+million-dollar funding for each of these projects and significant                  ion. A depiction of the progress made from these competi-
+commercial potential, a large incentive exists for researchers                     tions can be seen in Fig. 2. However, we are far from having
+and entrepreneurs alike to achieve autonomous operation in                         solved ADR—A notion reflected by the recently announced
+3046                                                                                           IEEE TRANSACTIONS ON ROBOTICS, VOL. 40, 2024
+
+
+
+competition scheduled for 2025 and to be hosted by the Abu              to agile flight split into perception, planning, and control subsec-
+Dhabi Autonomous Racing League [18].                                    tions. All of these components are equally important because,
+   Drone racing is a challenging benchmark that can help re-            at the edge of a drone’s performance envelope, all parts—
+searchers to gauge progress on complex perception, planning,            perception, state estimation, planning, and control—need to
+and control algorithms. Autonomous drones in a racing setting           meticulously work together. Next, we delve into learning-based
+must be able to perceive, reason, plan, and act on the tens of mil-     methods for perception, planning, and control, which rely on
+liseconds scale, all onboard a computationally limited platform.        recent advancements from the machine learning community in
+Apart from being very challenging to solve, the drone racing            Section IV. Then, a discussion of the development of simulation
+task offers a single measure of the progress of the state-of-the-art    tools that can enable rapid development for agile flight applica-
+in autonomous flying robotics: lap time. Solving this problem           tions in Section V. A history of drone racing competitions and
+requires efficient, lightweight algorithms to provide optimal           the methods used for each are included in Section VI. Next, a
+decision and control behaviors in real time. Just a few years           summary of open source code bases, hardware platforms, and
+back, it was unclear whether such a problem was feasible in             datasets for researchers is provided in Section VII. A forward-
+the first place, even given perfect information. Drone racing           looking discussion on the opportunities and challenges for future
+research has advanced much since its early stages [19]. Such            researchers interested in ADR is presented in Section VIII.
+advances required radically new algorithmic ideas, e.g., train-         Finally, Section IX concludes this article.
+ing learning-based sensorimotor controllers only in simulation,
+together with engineering advances to the platform and the                                   II. DRONE MODELING
+overall system [8]. Now that superhuman performance has been
+achieved [5] (despite being in controlled conditions), we predict          To further advance research on fast and agile flight, it is
+that more work will be done on safety and generalization over           important to have accurate models that capture the complex
+tasks and environments to bridge the gap between drone racing           nonlinear dynamics of multicopter vehicles at the limit of their
+and real-world applications. This research effort is already evi-       performance envelope.
+dent today, as shown by the increasing number of articles in the           This section reviews different dynamics modeling approaches
+field over the years [see Fig. 1(a)].                                   from classic, first-principles modeling to pure data-driven mod-
+   This is the first survey on the state of the art in ADR.             els in the context of drone racing. For the vehicle dynamics,
+This overview will be useful to researchers who wish to make            the key aspects that need to be modeled are the kinematics,
+connections between existing works, learn about the strengths           aerodynamics, the electric motors, and the battery. In addition to
+and weaknesses of current and past approaches, and identify             the vehicle dynamics models discussed in this section, many dif-
+directions moving forward which should progress the field in a          ficulties for ADR models are introduced by the onboard sensors,
+meaningful way.                                                         whose characteristics need to be modeled. For example, inertial
+                                                                        measurement units (IMUs) are subject to bias and noise, and
+                                                                        the intrinsic as well as extrinsic parameters of onboard sensors
+                                                                        change over time as hard crashes may lead to miscalibration.
+B. Task Specification
+   The drone racing task is to fly a quadrotor through a sequence       A. Kinematics
+of gates in a given order in minimum time while avoiding                   Typically, the vehicle is assumed to be a 6-degree-of-freedom
+collisions. Humans are astonishingly good at this task, flying          (DoF) rigid body of mass m with a (diagonal) inertia matrix J =
+at speeds well over 100 km/h with only an FPV camera as their           diag(Jx , Jy , Jz ). Given a dynamic state x ∈ R17 , the equations
+sensory input. Beyond this, expert pilots can adapt to new race         describing its evolution in time are commonly written as
+tracks quickly in a matter of minutes, however, the sensorimotor                                          ⎡                        ⎤
+skills required by professional drone pilots take years of training                           ⎡       ⎤              vW
+to acquire.                                                                                     ṗW B     ⎢                        ⎥
+                                                                                              ⎢       ⎥ ⎢                0         ⎥
+   For an autonomous drone to successfully complete this task,                                ⎢q̇ W B ⎥ ⎢      qW B                ⎥
+                                                                                              ⎢       ⎥ ⎢              ω B /2      ⎥
+it must be able to detect opponents and waypoints along the               ẋ = f (x, u) = ⎢           ⎥ = ⎢
+                                                                                              ⎢ v̇ W ⎥ ⎢ 1 (q
+                                                                                                                                   ⎥ (1)
+                                                                                                                                   ⎥
+track, calculate their location and orientation in 3-D space, and                             ⎢       ⎥ ⎢ m W B  f ) + gW ⎥
+                                                                                              ⎣ ω̇ B ⎦ ⎢ −1                        ⎥
+compute an action that enables navigation through the track as                                            ⎣J (τ − ω B × J ω B )⎦
+                                                                                                  Ω̇             1
+                                                                                                                τΩ (Ωss − Ω)
+quickly as possible while still controlling a highly nonlinear
+system at the limits. This is challenging in three different aspects:
+Perception, Planning, and Control. Poor design in any of these          where pW B ∈ R3 is the position of the center of mass given
+aspects can make the difference between winning and losing the          in the world frame, q W B ∈ SO(3) is a quaternion defining the
+race, which can be decided by less than a tenth of a second.            rotation of the body frame relative to the world (vehicle attitude),
+   The rest of this article is organized as follows. First, the mod-    v W ∈ R3 is the velocity of the vehicle in the world frame, ω B ∈
+eling procedure of the drone, including aerodynamics, batteries,        R3 is the body rate of the vehicle, Ω ∈ R4 is the motor speed,
+motors, cameras, and the system nonlinearities, are discussed           g W = [0, 0, −9.81 m/s2 ] denotes Earth’s gravity, and u ∈ R4
+in detail in Section II. A classical robotics pipeline is then          is the input. Depending on the control modality, the input can
+introduced in Section III, with a deep dive into literature relevant    be single rotor thrusts or collective thrust and body rates. In this
+HANOVER et al.: AUTONOMOUS DRONE RACING: A SURVEY                                                                                       3047
+
+
+
+setting, the task of the model is to calculate the total force f and    motors are not equipped with closed-loop motor speed control
+total torque τ that acts on the drone as accurately as possible.        but are controlled by a “throttle” command, which controls the
+Note the quaternion-vector product denoted by  representing            duty cycle of a pulsewidth-modulation signal applied to the
+a rotation of the vector by the quaternion as in q  f = q ·            motors. The actual rotational speed that the motor achieves is
+[0, f  ] · q̄, where q̄ is the quaternion’s conjugate. Those forces   a function of the throttle command as well as other parameters
+and torques, collectively referred to as wrench, are determined         such as the battery voltage and the drag torque of the rotor [7].
+by the aerodynamics of the platform as well as the vehicles’            Therefore, in order to have a dynamics model for the motors,
+actuators, e.g., the propellers.                                        we need a model of the battery to calculate the voltage applied
+                                                                        to the motors. Most literature on battery modeling relies on
+B. Aerodynamics                                                         so-called Peukert models [47], but for lithium-polymer batteries
+                                                                        in drone racing, this is hardly applicable because the battery
+   This section discusses the different approaches to modeling
+                                                                        discharge current often exceeds 100 A (e.g., 50–100C) [48],
+the aerodynamics of the drone and its propellers. The most
+                                                                        [49]. Graybox battery models for the voltage that are based on a
+widely used modeling assumption is that the propeller thrust
+                                                                        one-time-constant (OTC) equivalent circuit [50], [51] are much
+and drag torque are proportional to the square of the rotational
+                                                                        more suitable for drone racing tasks as shown in [7], because they
+speed [20], [21], [22], [23], [24] and that the body drag is neg-
+                                                                        are applicable to the extremely high loads experienced during
+ligible. These assumptions quickly break down at high speeds
+                                                                        a racing scenario. In combination with either a polynomial or a
+encountered in drone racing as this model neglects the following:
+                                                                        constant-efficiency motor model, such OTC models can be used
+   1) linear rotor drag [25], [26];
+                                                                        to accurately simulate the battery voltage during agile flight [7].
+   2) dynamic lift [25];
+                                                                        Given a simulation of the battery voltage, one can measure the
+   3) rotor-to-rotor [27], [28], [29];
+                                                                        performance characteristics of a given motor-propeller com-
+   4) rotor-to-body [27], [28], [29] interactions;
+                                                                        bination to determine the mapping of throttle command and
+   5) aerodynamic body drag [26], [28].
+                                                                        voltage to resulting steady-state propeller speed Ωss . When the
+   The accuracy of the propeller model can be improved by
+                                                                        highest model fidelity is desired, a more sophisticated motor
+leveraging the blade-element-momentum (BEM) theory, where
+                                                                        simulation [52] can further improve the accuracy, which can be
+the propeller is modeled as a rotating wing. Such first-principle
+                                                                        desirable if the controller directly outputs single-rotor thrusts
+approaches [30], [31], [32], [33], [34] have been shown to
+                                                                        instead of the more commonly used collective-thrust and body
+provide very accurate models of the wrench generated by a single
+                                                                        rates control modality.
+propeller as they properly capture effects 1) and 2). Implemented
+efficiently, a BEM model can be run in real time [35] and has
+been successfully used to test algorithms in simulation [36], [37].     D. Camera and IMU Modeling
+   Accounting for the remaining open points 3)–5), the aero-
+                                                                           Drone racing pushes not only the mechanical and electrical
+dynamics of the drone body as well as any interaction effects
+                                                                        components of drones to their limits, but is also highly demand-
+need to be calculated, which requires a full computational fluid
+                                                                        ing in terms of sensor performance. For an in-depth overview of
+dynamics (CFD) simulation [27], [28], [29], [38], [39]. Due to
+                                                                        the many different sensor options for drone racing, the reader is
+the extreme computational demands, this is impractical in drone
+                                                                        referred to [53]. The most common sensors aboard autonomous
+racing. To still get close to the accuracy of CFD methods while
+                                                                        drones are monocular or stereo cameras combined with IMUs
+retaining the computational simplicity of the previously men-
+                                                                        thanks to their low cost, low weight, and mechanical robustness.
+tioned methods, data-driven approaches are employed [35], [40],
+                                                                           For vision-based drone racing, having an accurate simulation
+[41], [42], [43], [44]. In the early works [42], [43], the whole
+                                                                        of the perception pipeline is critical for validation and controller
+vehicle dynamics model was learned from data. In a similar fash-
+                                                                        development. In terms of modeling and simulation of the cam-
+ion, Sun et al. [41] use a combination of polynomials—identified
+                                                                        era, it is common to use a pinhole model [54] and estimate
+from wind-tunnel flight data—to represent the vehicle dynam-
+                                                                        the focal length, image center, and distortion parameters from
+ics. In [35] and [40], it has been shown that higher modeling
+                                                                        measurements. Combined with accurate information on how far
+accuracies can be achieved when combining a first-principle
+                                                                        the camera is displaced from the center of gravity of the vehicle,
+model with a data-driven component. Such a combination of
+                                                                        this allows simulating observations. Either low-level sensory
+first-principle and data-driven models also leads to improved
+                                                                        observations (e.g., images) are simulated using a rendering
+generalization performance, as shown in [35], which combines
+                                                                        engine [22], [55] or more abstract visual features (e.g., landmark
+a BEM model with a temporal convolutional network [45] to
+                                                                        positions) are simulated using the projection equations.
+regress the residual wrench. Recently, a similar hybrid modeling
+                                                                           In the context of using a simulation to test approaches before
+approach has been applied to moving-horizon estimation [46].
+                                                                        attempting real-world deployment, an accurate model of the
+                                                                        IMU characteristics is important, as the bias and noise strongly
+C. Motor and Battery Models
+                                                                        influence the performance of many methods. The IMU intrinsic
+   The previous section outlines different approaches to how the        calibration estimates the noise characteristic of the sensor. The
+aerodynamic wrench can be estimated based on the state of the           camera-IMU extrinsic calibration estimates the relative position
+vehicle. However, for all such models, the rotational speed of          and orientation of the two sensors as well as the time offset.
+the propeller is assumed to be known. On most multicopters, the         Kalibr [56] is a widespread tool to perform these calibrations.
+3048                                                                                              IEEE TRANSACTIONS ON ROBOTICS, VOL. 40, 2024
+
+
+
+                                                                          that integrated into the classical VIO pipeline have the potential
+                                                                          to improve state estimation at high speed. Finally, we conclude
+                                                                          with a discussion on the application of classical VIO methods
+                                                                          to drone racing tasks.
+Fig. 3. Architecture 1: A classic architecture for an autonomous system
+programmed using model-based approaches.
+                                                                              1) Visual-Inertial Odometry (VIO): VIO is the most com-
+                                                                          mon solution for state estimation of aerial vehicles [58] using
+                                                                          only onboard sensing and computing, thanks to its favorable
+                                                                          tradeoff between accuracy and computational requirements.
+   However, the biggest source of measurement error of the                VIO algorithms usually comprise two main blocks: the frontend
+inertial sensors onboard a drone is not the sensors themselves            and the backend.
+but the strong high-frequency vibrations introduced by the fast-              The frontend uses camera images to estimate the motion of
+spinning propellers. The vibrations lead to aliasing effects on the       the sensor. Two main approaches exist in the literature: direct
+IMU measurements and introduce additional motion blur on the              methods [59], [60] and feature-based methods [61], [62], [63].
+camera images. The structural vibrations and their effect on the          Direct methods work directly on the raw pixel intensities. These
+measurements are extremely difficult to model and correct for.            methods commonly extract image patches and estimate the
+Therefore, a suitable hardware design is imperative that dampens          camera trajectory by tracking the motion of such patches through
+the mount of the camera and the IMU with respect to the vehicle           consecutive images. The tracking is achieved by minimizing
+frame.                                                                    a photometric error defined on the raw pixel intensities [59].
+                                                                          This tracking method is particularly interesting for drone racing
+   III. CLASSICAL PERCEPTION, PLANNING, AND CONTROL                       because of its robustness in featureless scenarios. In fact, a direct
+                        PIPELINE                                          frontend [60] is used to estimate the state of a racing drone
+   Since the inception of mobile robotics, a common architec-             in [16]. On the contrary, feature-based methods [61], [62], [63]
+ture has been primarily used to achieve autonomous navigation             extract points of interest, commonly known as visual features or
+capabilities across various systems. In a traditional robotics            keypoints, from the raw image pixels. The camera trajectory is
+software stack, the navigation task is broken into three main             estimated by tracking these points through consecutive images.
+components: perception, planning, and control. A diagram of               High-speed motions make it difficult (e.g., due to motion blur) to
+this architecture can be seen in Fig. 3. This section covers              track features on many consecutive; consequently, feature-based
+recent research in these areas relating specifically to agile flight      methods struggle in drone racing scenarios. However, feature-
+and ADR. All approaches detailed in this section rely on first            based methods exhibit higher robustness than direct methods
+principles modeling and optimization techniques.                          to brightness changes. The VIO methods used in [64] and [65]
+                                                                          demonstrate that a hybrid frontend, combining the benefits of
+                                                                          direct and feature-based methods, is beneficial for drone racing
+A. Perception                                                             tasks.
+   The perception block estimates the vehicle state and perceives             The backend fuses the output of the fronted with the inertial
+the environment using onboard sensors. The most common                    measurements. Two categories exist in the literature according to
+solution for state estimation of flying vehicles is visual-inertial       how the sensor fusion problem is solved: filtering methods [61]
+odometry (VIO), thanks to its low cost and low weight require-            and fixed-lag smoothing methods [62], [63]. Filtering methods
+ments. VIO uses camera and IMU measurements to estimate                   are based on an extended Kalman filter (EKF). These methods
+the state x̂ (position, orientation, and velocity) of the drone           propagate the system’s state using the inertial measurements and
+platform. The inertial measurements are integrated to obtain              fuse the camera measurements in the update step. The pioneer
+relative position, orientation, and velocity estimates in a short         filter-based VIO algorithm is the multistate constraint Kalman
+time, e.g., between two camera images. However, the integration           filter (MSCKF) originally proposed in [61]. Since then, many
+for a longer time, e.g., a few seconds, accumulates large drift           different versions of the MSCKF have been developed [66].
+due to scale factor errors, axis misalignment errors, and time-           Fixed-lag smoothing methods, also called sliding window es-
+varying biases [57] that commonly affect off-the-self IMU mea-            timators, solve a nonlinear optimization problem where the
+surements. The camera measurements provide rich information               variables to be optimized are a window of the recent robot
+about the environment at a lower rate, usually around 30 Hz, than         states. The cost function to minimize contains visual, inertial,
+IMU measurements. Unlike the IMU measurements, the camera                 and past states marginalized residuals. Thanks to their favorable
+measurements are affected by environmental conditions. The                tradeoff between accuracy and computational cost, filter-based
+quality of information they provide for state estimation degrades         methods have been commonly used in drone racing [16], [64],
+in the case of poor illumination conditions, textureless scenes,          [65].
+and motion blur. For this reason, the camera and inertial mea-                2) Additional Sensor Modalities in VIO: Recently, classical
+surements complement each other and are the standard choice               VIO pipelines have been augmented with event cameras [67],
+for state estimation of flying vehicles [58]. In this section, we first   [68], [69] or drone dynamics [70], [71], [72], to improve state
+give an overview of VIO with a focus on the methods that can              estimation at high speed.
+be applied for online state estimation of a racing drone. Second,             Low latency, high temporal resolution (in the order of mi-
+we give an overview of possible additional sensor modalities              crosecond) and high dynamic range (140 dB compared to 60 dB
+HANOVER et al.: AUTONOMOUS DRONE RACING: A SURVEY                                                                                       3049
+
+
+
+of standard cameras) are the main properties of event cam-            drone. Differently from [77] and [79], this method does not
+eras [73], which make this novel sensor a great complementary         use a VIO but controls the drone based on a visual-servoing
+sensor to standard cameras. Including event data in VIO algo-         approach. All the other gate detection methods in the literature
+rithms onboard flying vehicles achieves increased robustness          are based on deep learning techniques [82]. We review them in
+against motion blur as demonstrated in [67], [68], and [69].          Section IV. The known gate positions and the detections in the
+Although applications of event cameras in drone racing tasks          onboard images are used to estimate the relative pose between
+are yet to be explored, investigating the use of this sensor is a     the camera and the gate using the perspective-n-point algorithm
+promising research direction to robustify VIO systems for agile       (PnP) [83]. This relative pose is used to constrain the VIO
+flights.                                                              estimates, and consequently, reduce the drift. There is significant
+   The drone dynamics are used to define additional constraints       room for innovation on this front, as the VIO-PnP paradigm has
+in the estimation process. VIMO [70] is the first to integrate        existed for several years with little innovation. However, one
+error terms related to the drone transitional dynamics in a VIO       clear benefit of the VIO-PnP approach is its ability to use a
+backend. VIMO inspired a few works [71], [74] that propose            monocular camera setup with a large FOV. While this comes
+an improved noise model of the dynamics [74] and a learned            with a lack of scale and higher uncertainty in motion estimation,
+component to account for unmodeled aerodynamics [71]. In              both can be compensated using inertial sensors and localization
+particular, the results of [71] show that the learned aerodynamics    with respect to known landmarks (e.g., gates). As evidenced by
+effects help to improve the VIO estimates at high speeds.             the rich literature, this makes a monocular setup the preferred
+   Cioffi et al. [72] propose an odometry algorithm that relies on    solution for ADR practitioners. The choice of a monocular
+an IMU as the only sensor modality (no camera is needed), and         sensor is very much in agreement with how human pilots fly:
+leverages a learned dynamics component to estimate the state          while they have goggles with two monitors, the video stream they
+of the racing drone. Consequently, this method does not use a         receive is from a monocular camera system on the drone. Other
+visual frontend.                                                      approaches used in early drone racing competitions relied on the
+   3) Discussions: Delmerico and Scaramuzza [75] present a            technique of visual servoing via stereo cameras [10], but relying
+benchmark comparison between a number of VIO solutions on             on a stereo camera pair comes with inherent difficulties. In the
+the EuRoC dataset [76]. The EuRoC dataset contains camera             presence of motion blur, stereo-matching approaches degrade
+and IMU data recorded onboard a drone flying in indoor envi-          quickly. Furthermore, drones only allow for a very small baseline
+ronments. The drone moves with average linear and angular             and require a wide-angle camera to perceive as much of the
+velocities up to 0.9 m/s and 0.75 rad/s, respectively. These          surroundings as possible. Both lead to very high depth estimation
+values are far below the ones reached in drone racing. The            errors in the stereo setup. The solution proposed in [10] was
+conclusions of [75] show that state-of-the-art VIO algorithms         found to be sensitive to indoor lighting changes and needed to
+provide reliable solutions for estimating the state of the drone at   be hand-tuned for every flight.
+limited speeds. However, these classical VIO methods cannot              Recent works [84], [85], [86] proposed vision-based odome-
+provide accurate state estimates for drone racing tasks. VIO          try algorithms that are learned end-to-end. Theoretically, these
+methods accumulate large drift in scenarios characterized by          methods could be specialized to drone racing tasks and poten-
+motion blur, low texture, and high dynamic range [77]. These          tially outperform classical VIO approaches. However, they are in
+scenarios are the norm in drone racing.                               the early development phase, and how to customize them for the
+   To help research VIO algorithms for drone racing tasks,            drone racing task is still an open research question. In addition,
+Delmerico et al. [78] propose the UZH-FPV Drone Racing                they currently have high computational costs that make them
+dataset. This dataset contains images recorded from standard          impractical for online state estimation onboard drones. We refer
+cameras, event camera data, and IMU data recorded onboard a           the reader to Setion IV for a detailed review of VIO methods
+quadrotor flown by a human pilot. All the flights include visual      based on deep learning.
+challenges similar to those in drone racing competitions.
+   Successful state estimation solutions for drone racing [77],
+[79] reduce the drift accumulated in VIO by localizing to a
+prior map of the track. In drone racing competitions, a map           B. Planning
+of the track in the form of gate positions is known beforehand.          Once a state estimate x̂ has been obtained from the perception
+The localization process is based on the detection of the gates.      module, the next step in the classical pipeline is to plan a fea-
+Performing gate detection is challenging. Often during the race,      sible, time-optimal trajectory τref = (xref , uref )k ∀k ∈ 0 . . . N ,
+none of the gates is visible in the camera’s field of view. More-     which respects the physical limits of the platform as well as
+over, motion blur makes gate corner detection difficult. For this     the constraints imposed by the environment. This requires pre-
+reason, gate detection and VIO are complementary. In [80], a          dicting the drone’s future states such that minimum lap time is
+gate detector was proposed that uses an RGB camera to identify        reached without crashing.
+the gates based on their color. This detector, tailored to the IROS      The planning for drones has matured over the last decade
+drone racing context [19], is aimed at extreme computational          from works mostly verified in simulation to works shown in
+efficiency, which is particularly important for tiny drones. The      both controlled lab environments and unknown unstructured
+method in [81] relies on detecting gates and using a model            environments. In the classical pipeline, planning can include up
+of the drone dynamics to estimate the position of the racing          to two distinct planning problems, path planning and trajectory
+3050                                                                                           IEEE TRANSACTIONS ON ROBOTICS, VOL. 40, 2024
+
+
+
+planning. Path planning tackles the problem of finding a geomet-        collision-free trajectory planning. Similarly, the search-based
+rical path between a given start and goal position while passing        methods [99], [100] use a variant of A* to perform both path
+specified waypoints and avoiding obstacles. Trajectory planning         and trajectory planning at the same time.
+then uses a found geometric path to either create a collision-free         2) Polynomial and Spline Trajectory Planning: The poly-
+flight corridor [87], [88], to find new waypoints for the trajectory    nomial and spline methods leverage the differential flatness
+to avoid collisions [37], [89], to constrain the trajectory to stay     property [111], [112] of quadrotors and represent a trajectory as
+close to the found path [90], [91], or directly finds time allocation   a continuous-time polynomial or spline. This property simplifies
+for a given path [92], [93]. Therefore, path planning can be            the full-state trajectory planning to a variant where only four flat
+seen as a way to select the homotopy class of the collision-free        outputs need to be planned (typically 3-D position and heading).
+space the drone flies through, while trajectory planning finds the      By taking their high-order derivatives, these flat outputs can
+full (or simplified) time-allocated drone state predictions to be       represent a dynamically feasible trajectory with their respective
+followed by the control pipeline (see Section III-C). However,          control inputs. This property is used by many polynomial and
+many works rely solely on trajectory planning as they assume no         spline methods that are nowadays among the most used for
+collision with the environment when a trajectory is found [94],         general quadrotor flight.
+[95], [96], [97], [98]. Other works directly find a collision-free         The widely used polynomial trajectories [111], [112] min-
+trajectory [99], [100], [101], [102] without having a previously        imize snap (fourth-order position derivative) of a trajectory.
+found path. On the other hand, some control approaches [103],           Different methods opted for minimizing jerk (third-order po-
+[104] do not need a specified time-allocated trajectory and rely        sition derivative) for planning a trajectory [113]. However, the
+only on the geometrical path for controlling the drone.                 trajectories that result from having jerk as the primary objective
+   In the following text, we first overview the most popular path       have been shown to minimize the aggressiveness of the control
+planning approaches for drones that are used for further trajec-        inputs [113], which is fundamentally different from minimiz-
+tory planning. Then, we categorize trajectory planning meth-            ing the lap times, where extremely aggressive trajectories are
+ods in polynomial and spline trajectory planning, optimization-         generally required. Richter et al. [89], therefore, extended the
+based trajectory planning, search-based trajectory planning, and        objective by jointly optimizing both the snap of a trajectory
+sampling-based trajectory planning.                                     and the total time through a user-specified penalty on time.
+   1) Path Planning: Path planning approaches can be broadly            Recently, Han et al. [87] proposed a polynomial-based trajectory
+divided into sampling-based planning and combinatorial plan-            planning method for drone racing. It jointly optimizes control
+ning [105]. Sampling-based methods do not construct the obsta-          effort and regularized time and penalizes the dynamic feasibility
+cle space explicitly but rather rely on random sampling of the          and collisions.
+configuration space together with collision detection. The most            Because of their numerical stability, other methods use B-
+popular variants of the sampling-based methods with numerous            splines to represent trajectories [90], [91] instead of high-
+modified versions are the probabilistic roadmaps (PRM) [106]            order polynomial representations that are numerically sensitive.
+and rapidly exploring random trees (RRT) [107]. Important               These methods jointly optimize different objectives, simulta-
+variants of these algorithms named RRT* and PRM* [108],                 neously smoothness, dynamic feasibility, collision avoidance,
+can find the optimal path given infinite time. The combinatorial        safety [91], and vision-based target tracking [94]. Recently, Qin
+planning methods, in contrast to the sampling-based methods,            et al. [114] proposed a polynomial trajectory representation
+directly represent the obstacle or free space using e.g. polygonal      based on [115] and use it to plan time-optimal trajectories
+maps or cell decomposition such as grid-based maps. With the            through gates of arbitrary shapes for drone racing, achieving
+help of a graph representation of the decomposed free space,            close-to-time-optimal results while being more computationally
+classical path search algorithms such as A* [109] or Dijkstra’s         efficient than [95].
+algorithm [110] can be used to find a path.                                Although both polynomial and spline trajectories are widely
+   Variants of the aforementioned path planning approaches are          used due to their computational efficiency, polynomial-based
+used in many of the methods listed in Section III-B2–III-B5             trajectories (and their derivatives) are smooth by definition.
+to help find trajectories for either fast flight or even drone          Therefore, only smooth control inputs can be sampled from
+racing. The RRT* algorithm is used to find new waypoints for            them. For this reason, the traditional polynomial planning [111]
+polynomial trajectory planning in [89], and the PRM* is used            with a finite number of coefficients and one polynomial segment
+as a path planning part to guide sampling-based trajectory plan-        between every two waypoints (gates) cannot represent true time-
+ning in [37]. The sampling-based planning in [101] and [102]            optimal trajectories [95]. Yet, direct collocation methods [116]
+directly performs both path and trajectory planning. While the          that rely on polynomials to approximate the input and state dy-
+trajectory planning objective can be to minimize time duration of       namics can achieve nearly optimal performance. This is mainly
+a trajectory, the path planning typically tries to find the shortest    due to a larger number of polynomial segments between the
+paths. Therefore, some methods search for multiple distinct             waypoints in collocation methods, joint optimization of both
+paths to enable the trajectory planning to search over multiple         polynomial coefficients and collocation points, and due to the
+options on how to navigate around obstacles [37], [90], [91].           approximation of the entire dynamics by polynomials. This
+Other methods [87] use search-based algorithms to find an initial       allows to keep the acceleration at the possible maximum at all
+path and to create a convex flight corridor for constraining the        times similar to the optimization-based shooting method [95].
+HANOVER et al.: AUTONOMOUS DRONE RACING: A SURVEY                                                                                        3051
+
+
+
+Therefore, while the classical polynomial and spline methods               5) Sampling-Based Trajectory Planning: Sampling-based
+can be considered optimization-based, they only optimize coef-          methods like RRT* [119] can be used for planning trajecto-
+ficients of a single polynomial between every two waypoints to          ries for linearized quadrotor models. Several time-minimizing
+describe quadrotor position and heading, leveraging the differ-         approaches [77], [101] use a point-mass model for high-level
+ential flatness property [111], [112].                                  time-optimal trajectory planning. In [101], an additional trajec-
+   3) Optimization-Based Trajectory Planning: Optimization-             tory smoothing step is performed where the generated trajectory
+based trajectory planning enables us to independently select the        is connected with high-order polynomials by leveraging the dif-
+optimal sequence of states and inputs at every time step, which         ferential flatness property of the quadrotor. Ichter et al. [120] use
+inherently considers time minimization while complying with             sampling-based approach with massive GPU parallelization and
+quadrotor dynamics and input constraints. Optimization-based            a 6-D double integrator system of UAV with additional single
+approaches have been extensively considered in the literature,          integrator yaw dynamics. However, these point-mass approaches
+ranging from exploiting point-mass models [96], simplified              need to relax the single actuator constraints and instead limit
+quadrotor models [97], [117], and full-state quadrotor mod-             the per-axis acceleration, which results in trajectories that are
+els [88], [95].                                                         conservative and suboptimal given a minimum time objective.
+   Time-optimality of a trajectory could also be accomplished by        Zhiling et al. [102] use minimum-jerk motion primitives for
+using a specific path parameterization that maximizes velocity          connecting randomly sampled states inside RRT* to plan a
+over a given path [92]. This method was shown for quadrotors            collision-free trajectory. Since the authors use polynomials, this
+in [93] for minimizing time of flight considering both transla-         approach can only generate smooth control inputs, meaning
+tional and rotational quadrotor dynamics. However, the method           that they cannot rapidly switch from full thrust to zero thrust
+only creates a velocity profile over a given path that is not further   if required.
+optimized.                                                                 The first method for planning minimum-time trajectories in a
+   Apart from time optimality, complying with intermediate              cluttered environment for the full quadrotor model was proposed
+waypoint constraints is another requirement for path planning in        in [37]. It uses a hierarchical sampling-based approach with
+ADR. A common practice of solving a trajectory optimization             an incrementally more complex quadrotor model to guide the
+problem with waypoint constraints is allocating waypoints to            sampling. The authors showed that the method outperforms both
+specific time steps and minimizing the spatial distance between         polynomial and search-based methods in minimizing trajectory
+these waypoints and the position at the corresponding allocated         time. Yet, the method is offline and intractable in real time. Most
+time steps on the reference trajectory (e.g., [98] and [118]). The      recently, Romero et al. [104] proposed an online replanning
+time allocation of the waypoints is, however, nontrivial and diffi-     approach that plans minimum-time trajectories for a point-mass
+cult to determine. This is tackled in [88], but the work uses body      model. The paths of replanned trajectories are then consequently
+rates and collective thrust as control inputs and does not repre-       used by model predictive contouring control [103] with a full
+sent realistic actuator saturation. Recent work [95] introduces a       quadrotor model to maximize the progress along the path. This
+complementary progress constraints approach, which considers            method is capable of outperforming other classical approaches
+true actuator saturation, uses single rotor thrusts as control          due to the replanning capability and progress maximization with
+inputs, and exploits quaternions to create full, singularity-free       a full quadrotor model.
+representations of the orientation space with consistent lin-              6) Discussion: A planned trajectory can be understood as
+earization characteristics. While the aforementioned methods            an intermediate representation that, given information about the
+create time-optimal trajectories passing through given gates,           robot’s dynamics and the environment, helps guide the platform
+they are computationally costly, and hence, intractable in              through the race track and ultimately perform the task at hand.
+real time.                                                              One might argue if this intermediate representation is needed at
+   4) Search-Based Trajectory Planning: Search-based plan-              all, since ultimately, what we are looking for is a policy that maps
+ning methods [99], [100] rely on discretized state and time             sensor information and current environment knowledge to the
+spaces. They solve the trajectory planning through graph search         actuation space. This is generally achieved with learning-based
+algorithms such as A*. The search graph is built using minimum-         approaches, discussed in Section IV, which bypass the plan-
+time motion primitives with discretized velocity, acceleration,         ning stage and directly convert sensor observations to actuation
+or jerk input. The algorithms then use trajectories of a simpler        commands [121], [122], [123].
+model, e.g., with velocity input, as heuristics for the search             One of the biggest benefits of explicit planning is modu-
+with a more complex model. Search-based planning methods                larity. This means that the developed algorithms can be used
+can optimize the flight time up to discretization, but they suf-        off-the-shelf for different drone tasks outside racing, such as
+fer from the curse of dimensionality, which renders them too            search and rescue, which is not the case for single-purpose
+computationally demanding for a complex quadrotor model.                learned approaches. However, explicit planning suffers from the
+Furthermore, the employed per-axis dynamic limits (velocity,            disconnection (or an open loop) between the planning and the
+acceleration, and jerk) do not represent the true quadrotor model,      deployment stage. Unexpected deviations from the plan, be it
+further decreasing the quality of found plans. Finally, although        in the time domain (like unmodeled system delays) or in the
+searching for minimum time trajectories, the methods are cur-           state-space domain (like state estimation drifts or jumps in the
+rently limited to planning between two states, which is not             VIO pipeline), can lead to compound errors, and ultimately, a
+suitable for multiwaypoint drone racing.                                complete system failure.
+3052                                                                                                    IEEE TRANSACTIONS ON ROBOTICS, VOL. 40, 2024
+
+
+
+                                                                           when choosing its position and heading as flat outputs in [112].
+                                                                           In this work, many agile maneuvers are performed onboard real
+                                                                           drones with speeds up to 2.6 m/s.
+                                                                              The previous work is extended in [26], proving that the
+                                                                           dynamics model of a quadrotor subject to linear rotor drag is
+                                                                           also differentially flat. The inclusion of the aerodynamic model
+                                                                           within the nonlinear controller led to demonstrated flight speeds
+                                                                           up to 4 m/s while reducing tracking error by 50% onboard a real
+                                                                           drone.
+                                                                              The differential flatness method is further extended in [127] by
+                                                                           cascading an incremental nonlinear dynamic inversion (INDI)
+                                                                           controller with the differential flatness controller described
+                                                                           in [112] but neglects the aerodynamic model addition from [26].
+Fig. 4. Top speeds demonstrated on autonomous drones over time from both
+literature and competition data.                                           The INDI controller is designed to track the angular acceleration
+                                                                           commands Ω̇ from the given reference trajectory. Top speeds of
+                                                                           nearly 13 m/s and accelerations over 2 g are demonstrated on-
+   This can be tackled with more complex control approaches                board a real quadrotor. The controller shows robustness against
+that do some part of the replanning online [104].                          large aerodynamic disturbances in part due to the INDI con-
+                                                                           troller.
+C. Control                                                                    An investigation of the performance of nonlinear model pre-
+                                                                           dictive control (NMPC) against differential flatness methods
+   Over the last decade, significant advancements have been                is available in [125]. Cascaded controllers of INDI-NMPC
+made in agile multicopter control. Every year, increasing top              and INDI-differential flatness are shown to track aggressive
+speeds are demonstrated in the literature as shown in Fig. 4.              racing trajectories that achieve speeds of around 20m/s and
+   Controllers must be able to make real-time decisions in the             accelerations of over 4 g. While differential flatness methods
+face of poor sensor information and model mismatch. Control                are computationally efficient controllers and relatively easy to
+inputs, u(t), can come in a variety of modalities for quadrotor            implement, they are outperformed on racing tasks by NMPC.
+control, such as velocity and heading, body rates and collective              An excellent overview of model predictive control (MPC)
+thrust, or direct rotor thrust commands [36]. Typically, a high-           methods applied to microaerial vehicles can be found in [128].
+level controller computes a desired virtual input such as body             Because quadrotors are highly nonlinear systems, nonlinear
+rates and collective thrust, which is then passed down to a low-           MPC is often used as the tool of choice for agile maneuvers. The
+level flight controller that directly controls the individual rotors       debate of linear versus nonlinear MPC is thoroughly discussed
+on the multicopter.                                                        in [129]. Model predictive path integral (MPPI) control is a
+   Commonly used open source controllers such as PixHawk1 or               sampling-based optimal control method that has found excellent
+BetaFlight2 are widely available to the drone racing community.            success on the AutoRally project, a 1/5th scale ground vehicle
+BetaFlight is the most commonly used low-level controller for              designed to drive as fast as possible on loose dirt surfaces [130],
+agile drone flight and has been widely adopted by the FPV racing           [131]. An introduction to MPPI can be found online.3 The MPPI
+community.                                                                 approach can be used on agile quadrotors to navigate complex
+   In the following sections, we provide an overview of suc-               forest environments, however, analysis was only performed in
+cessful approaches to achieving high speeds in both simulation             simulation [130]. Most of the successful demonstrations of
+and real-world applications. We sort the approaches into model-            MPPI come from ground robots [130], [131]. Because MPPI is
+based control and coupled perception and control.                          a sampling-based algorithm, scaling to higher dimension state
+   1) Model-Based Control: In model-based control, an explicit             spaces of quadrotors can lead to performance issues as shown
+model of the dynamic system is used to calculate control com-              in [124].
+mands that satisfy a given objective such as minimizing time or               Nonlinear MPC methods are also used in [40] where a nom-
+tracking error. Models enable the prediction of future states of           inal quadrotor model is augmented with a data-driven model
+the drone and provide information about the system’s stability             composed of Gaussian processes and used directly within the
+properties. In [126], geometric tracking control is introduced             MPC formulation. The authors found that the Gaussian-process
+on the special Euclidean group SE(3) and completely avoids                 model could capture highly nonlinear aerodynamic behavior,
+singularities commonly associated with Euler angle formula-                which is difficult to model in practice as described in Section II.
+tions on SO(3). This nonlinear controller showed the ability               The additional terms introduced by the Gaussian process added
+to execute acrobatic maneuvers in simulation and was the first             computational overhead to the MPC solve times, but it was still
+to demonstrate recovery from an inverted initial attitude. The             able to run onboard a Jetson TX2 computer.
+dynamic model of a quadrotor is shown to be differentially flat               Similar to [127], Hanover et al. [124] question whether or not
+                                                                           it is necessary to explicitly model the additional aerodynamic
+  1 [Online]. Available: https://pixhawk.org/
+  2 [Online]. Available: https://github.com/betaflight/betaflight            3 [Online]. Available: https://autorally.github.io/
+HANOVER et al.: AUTONOMOUS DRONE RACING: A SURVEY                                                                                        3053
+
+
+
+terms from [40] due to the added computational and modeling            function contains both vehicle dynamic terms as well as percep-
+complexity. Instead, they propose to learn residual model dy-          tion awareness terms such as keeping an area of interest in the
+namics online using a cascaded adaptive NMPC architecture.             center of the camera frame.
+Aggressive flight approaching 20m/s and over 4 g acceleration             This technique is applied to the drone racing problem in [141],
+is demonstrated on real racing quadrotors. In addition, com-           where an MPPI controller is designed with a deep optical flow
+pletely unknown payloads can be introduced to the system,              component that predicts the movement of relevant pixels (i.e.,
+with minimal degradation in tracking performance. The adaptive         gates). The perception constraints are introduced into a nonlinear
+inner loop controller added minimal computational overhead             optimization problem and deployed in a drone-racing simulator.
+and improved tracking performance over the Gaussian process            The approach was not demonstrated onboard real hardware.
+MPC by 70% on a series of high-speed flights of a racing               In [142], a perception-aware MPC based on differential flatness
+quadrotor [40], [124].                                                 was used to ensure that a minimum number of features are
+   Contouring control methods can deal with competing opti-            tracked between control updates and thus guarantee localization.
+mization goals such as trajectory tracking accuracy and mini-          To achieve this, a perception chance constraint within the MPC
+mum flight times [132]. These methods minimize a cost func-            formulation is introduced to ensure that at least n number of
+tion, which makes tradeoffs between these competing objec-             landmarks are within the field of view of the camera at all times
+tives. In [133], nonlinear model predictive contouring control         with some bounded probability.
+(MPCC) is applied to control small model race cars. MPCC was              3) Discussion: The performance of model-based controllers
+then extended to agile quadrotor flight in [103]. Although the         degrades when the model they operate on is inaccurate [124]. For
+velocities achieved by the MPCC controller were lower than             drones, defining a good enough model is an arduous process due
+that of [124] and [125], the lap times for the same race track         to highly complex aerodynamic forces, which can be difficult to
+were actually lower due to the ability of the controller to find a     capture accurately within a real-time capable model. In addition,
+new time allocation that takes into account the current state of the   the tuning process of many model-based controllers can be
+platform at every timestep. The work is further extended to solve      arduous, and requires a high level of domain expertise to achieve
+the time-allocation problem online, and to replan online [104]         satisfactory performance.
+while also controlling near the limit of the flight system. Sim-          In any optimal control problem, a cost function that the
+ilar work uses tunneling constraints in the MPCC formulation           user wants to optimize must be defined. Traditionally, conve-
+in [134].                                                              nient mathematical functions leveraging convex costs are used
+   2) Perception Awareness: Other methods that lie in the inter-       because these functions are easy to optimize and there is a
+section of perception, planning, and control include a perception      large toolchain available for optimizing such problems such as
+objective in the cost function that helps improve the visibility       Acados [143], CVXGEN [144], HPIPM [145], or Mosek [146].
+of an objective or the quality of the state-estimation pipeline.       In many drone racing articles, the optimal control problem is
+The methods are called perception aware, and the first methods         formulated as follows:
+were proposed in [135], [136], and [137]. This is integral to                                         N −1
+the drone-racing problem because, to navigate a challenging                        min xTN QxN +             xTk Qxk + uTk Ruk
+                                                                                    u
+race course, the gates that define the course layout must be                                          k=0
+kept in view of the onboard cameras as much as possible.
+                                                                                  subject to : xk+1 = f RK4 (xk , uk , δt)
+In addition, coupling the perception with the planning and/or
+control problem can alleviate issues in state estimation because                  x0 = xinit , umin ≤ uk ≤ umax                          (2)
+the racing gates are usually feature rich. Therefore, the use
+                                                                       where the state is given by xk , the control input is given by uk ,
+of perception-related objectives in both planning and control
+                                                                       the state cost matrix is given by Q, and the control cost matrix
+pipelines is commonplace [91], [93], [120], [137], [138]. For
+                                                                       is given by R. The optimization problem is constrained by the
+example, in [93] and [137], the authors tackle the problem
+                                                                       dynamics of the system given by f (xk , uk , δt) where δt is a
+of minimizing the time required by a quadrotor to execute a
+                                                                       finite time step. The nonlinear dynamics are typically propagated
+given path, while maintaining a given set of landmarks within
+                                                                       forward using an integrator such as fourth-order Runge–Kutta,
+the field of view of its on-board camera, or Tordesillas and
+                                                                       RK4. In addition, the problem is subject to the thrust limits of
+How [139] include a perception-aware term in the cost function
+                                                                       the platform, umin and umax , and some initial condition of the
+to maximize the visibility of the closest dynamic obstacle, in
+                                                                       system x0 . In this formulation, a reference position and control
+order to readily plan a path that avoids it. These methods are
+                                                                       are provided by a high-level planner and the goal of the controller
+called perception aware [140], and in the following, we highlight
+                                                                       is to track the given reference, but this objective is ill-defined for
+their core characteristics.
+                                                                       the drone racing problem: in drone racing, we wish to complete
+   The goal is as follows: navigate a trajectory with low tracking
+                                                                       the track in as little time as possible; therefore, our objective can
+error while keeping a point of interest in view while minimizing
+                                                                       be better formulated as follows:
+motion blur for maximum feature detection and tracking. The
+                                                                                                          T
+first instance applied to agile quadrotors was perception-aware
+model predictive control (PAMPC) introduced in [140]. In this                                       min         δt
+                                                                                                     u
+                                                                                                          k=0
+work, a nonlinear program is optimized using a sequential
+quadratic programming approximation in real time. The cost                         subject to : xk+1 = f RK4 (xk , uk , δt)
+3054                                                                                                 IEEE TRANSACTIONS ON ROBOTICS, VOL. 40, 2024
+
+
+
+
+                  x0 = xinit , x ∈ X , u ∈ U                       (3)
+
+where T is the number of discrete time steps it takes to complete
+the race, and the set U contains the input constraints (e.g., single-
+rotor thrust constraints). The set X encodes all state constraints,       Fig. 5.   Architecture 2: Learned perception.
+from possible limits in the state itself (e.g., attitude or velocity
+constraints), to more complex constraints such as the fact that the
+drone has to pass through a set of gates in a predetermined order         landmarks within the environment and output useful representa-
+without colliding. This approach requires a time-horizon that             tions such as waypoints, or the location of gates on the track. A
+predicts all the way until the end of the task, which is intractable      depiction of this architecture can be seen in Fig. 5. An overview
+to optimize online.                                                       of deep learning methods for vision-based navigation specific to
+   Reinforcement learning (RL) methods [36], [122] can opti-              drone racing can be found in [153].
+mize a proxy of this cost function, however do so in an offline              In [64], a dataset of images is collected from a forward-facing
+fashion, requiring large amounts of training experience to ap-            camera mounted on a drone labeled with the relative position
+proximate the value function. RL methods do not necessarily               to the closest gate. This dataset is used to train a network
+depend on a high-level planner to provide a reference to track.           that predicts from an image both the next gate location and its
+We will discuss some recent approaches using RL methods in                uncertainty. Predictions are then fused with a VIO system in an
+the following section.                                                    (EKF to predict the position of the drone on the track. Similarly
+                                                                          in [16], a convolutional neural network (CNN) is used to detect
+               IV. LEARNING-BASED APPROACHES                              gate corners in the AlphaPilot challenge. Once the gate corners
+   In this section, we present various learning-based approaches          are detected, classical computer vision algorithms like PnP can
+for drone racing. These approaches replace the planner, con-              be used to find the coordinates of the gate in the camera frame.
+troller, and/or perception stack with a neural network. Learning-         Using an EKF, the gate corner locations can be fused with a
+based methods have gained significant traction in the last few            traditional VIO pipeline to improve the estimates of the drone’s
+years, given their ability to cope with both high-dimensional             location and orientation [16].
+(e.g., images) or low-dimensional (e.g., states) input data, their           Oftentimes, perception networks consume precious resources
+representation power, and the ease of developing and deploying            onboard computationally limited drones. To minimize the net-
+them on hardware.                                                         work processing time, the authors in [82] and [154] proposed
+   The big advantage of these methods is that they require less           optimized architectures for gate detection on real-world data. A
+computational effort than traditional methods, possibly enabling          similar optimization went into “GateNet” [155], a CNN to detect
+low-latency replanning and control. In addition, they are much            gate center locations, distance, and orientation relative to the
+more robust to system latencies and sensor noise, which can be            drone. The same authors developed a follow-up work denoted
+easily accounted for by identifying them on physical drones, and          as “Pencil-Net” to do gate detection using a lightweight CNN
+then, adding them to the training environments [36]. However,             in [156]. Most learning-based perception networks can suffer
+the major limitation of these methods is their sample com-                from poor generalization when deployed in environments that
+plexity. There are currently two possibilities for data gathering.        were not included in the training data. To reduce deployment
+The first, mostly popular in the initial stages of learning-based         sensitivity to lighting conditions or background content, virtual
+robotics [64], [79], [147], [148], [149] is to collect data in the real   gates can be added to real-world backgrounds [157].
+world. The data are then annotated by a human or an automated                Up until recently, RGB and depth cameras were used exclu-
+process, and used for training. The second, much more popular in          sively in the drone racing task, however, these sensor modalities
+recent years and currently achieving the best results, consists of        can be sensitive to changes in the environment such as illumina-
+using simulation for collecting training data [36], [65], [121],          tion changes. To overcome this, Andersen et al. [158] proposed
+[150], [151]. However, significant simulation engineering is              using event cameras coupled with a sparse CNN, recurrent
+required to enable generalization if the training data come from          modules, and a you only look once object detector to detect
+a simulator. Conversely, generalization is easier if data come            gates. The use of event cameras overcomes potential issues with
+from the real world, but the data collection process is very slow,        motion blur from the rapid movement of the drone and is a
+tedious, and expensive.                                                   promising path forward for high-speed navigation.
+   Surveys covering existing methods for learning-based flight               Overall, deep learning methods for gate detection are the
+already exist [152], [153]. In contrast to them, we cover the             de facto standard in all drone racing systems. However, such
+most recent advances and give a broader discussion on the                 gate detectors are always coupled with traditional VIO systems.
+comparison between learning-based and traditional methods for             which explicitly estimate the metric state of the drone. These
+drone racing.                                                             approaches are discussed in Section III. It is interesting to notice
+                                                                          that learning-based odometry systems, such as in [84], [85],
+                                                                          and [86], have not yet replaced traditional methods. This is
+A. Learned Perception
+                                                                          particularly surprising since deep visual odometry systems can
+   For learned perception modules, the goal of the network is             specialize to a particular environment, which can be useful for
+to use images from an RGB, depth, or event camera to detect               drone racing since the race track is fixed and known in advance.
+HANOVER et al.: AUTONOMOUS DRONE RACING: A SURVEY                                                                                   3055
+
+
+
+
+Fig. 6.   Architecture 3: Learned planning and perception.           Fig. 7.   Architecture 4: Learned control.
+
+
+
+
+A disadvantage of these methods is the high computational cost          Several other works apply a similar stacked perception and
+that makes them impractical for online applications. However,        planning pipeline for other ADR tasks [147], [148], [149], [165].
+research in end-to-end visual odometry is moving forward at          We point the interested reader to existing surveys on the role of
+a fast pace [86]. Recently, works proposing end-to-end VIO           learning in drone navigation [152].
+systems for drones have been published [159], [160], [161].             A few works also studied the planning problem using data-
+Sanket et al. [159] propose to learn global optical flow, which      driven methods, decoupling it from the perception problem.
+is then loosely fused with an IMU for full 6-DoF relative            An interesting approach demonstrated in the NeurIPS Game of
+pose estimation. The method in [160] and its extension [161]         Drones competition [166] used an off-the-shelf RL algorithm in
+proposes a CNN-based ego-motion estimator for fast flights.          place of a classic model-based planner for drone racing [167].
+The performance of this method in the UZH-FPV dataset shows
+that although end-to-end VIO methods are a promising solution        C. Learned Control
+for agile flights, they are not yet mature for drone racing. We         Data-driven control (see Fig. 7), like RL, allows for over-
+foresee that in the near future, researchers will be able to apply   coming many limitations of prior model-based controller de-
+these methods to the drone racing task.                              signs by learning effective controllers directly from experience.
+                                                                     For example, model-free RL was applied to low-level attitude
+B. Learned Planning and Perception                                   control [168], in which a learned low-level controller trained
+                                                                     with proximal policy optimization (PPO) outperformed a fully
+   A tightly coupled planning and perception stack (see Fig. 6)      tuned PID controller on almost every metric. Similarly, Lambert
+is a very attractive algorithmic perspective. First, it greatly      et al. [169] used model-based RL for low-level control of an a
+simplifies the perception task: an explicit notion of a map          priori unknown dynamic system. More related to drone racing,
+or globally consistent metric state is not required. Second, it      recent works showcased the potential of learning-based con-
+largely reduces computational costs, both in the pretraining and     trollers for high-speed trajectory tracking and drone racing [36].
+evaluation stages. Finally, it can leverage large amounts of data,   Imitation learning is more data efficient compared to model-free
+collected either in simulation or the real world, to become robust   RL. In [170], aggressive online control of a quadrotor has been
+against noise in perception or dynamics. Yet, an interesting         achieved via training a network policy offline to imitate the
+observation is that these methods still work best when coupled       control command produced by a model-based controller. Simi-
+with an explicit estimator of the metric state [5]. In contrast      larly, Sánchez-Sánchez and Izzo [171] studied real-time optimal
+to traditional methods, a locally consistent odometry system is      control via deep neural networks in an autonomous landing
+sufficient [65], [79], [150], waving away the complexities of        problem. Other work in this category has shown that RL can
+full-slam methods (e.g., loop closure).                              find optimal [122], [172] or highly adaptive controllers [173].
+   In [79], a coupled perception and planning stack for drone           With a learning-based controller, it can be difficult to provide
+racing is trained using real-world flight demonstrations. While      robustness guarantees as with traditional methods such as the
+good performance is indicated on the racing task as well as          linear quadratic regulator (LQR). While a learning-based con-
+robustness against drift in state estimation, the method requires    troller may provide superior performance to classical methods in
+retraining for each new environment. Therefore, in the follow-       simulation, it may be that they cannot be used in the real world
+up work [65], data generated entirely in simulation are used         due to the inability to provide an analysis of the controller’s
+to train the perception-planning stack, waiving the labor and        stability properties. This is particularly problematic for tracking
+time-consuming requirement of data collection in the real world.     the time-optimal trajectories required by drone racing. Recent
+A similar pipeline was used for high-speed autonomous flight         works have attempted to address this using the Lyapunov-stable
+through complex environments in [150], which proposes to train       neural network design for the control of quadrotors [174]. This
+a neural network in simulation to map noisy sensory observa-         work shows that it is possible to have a learning-based controller
+tions to collision-free trajectories directly. This approach was     with guarantees that can also outperform classical LQR methods.
+later extended to nanoquadcopters [162], which won the authors       Building upon this concept, reachability analysis and safety
+the first position in the IMAV 2022 Nanocopter AI Challenge.         checks can be embedded in a learned safety layer [175].
+Recent work [163], [164] has shown the possibility of training
+sensorimotor controllers for obstacle avoidance end-to-end us-
+ing RL, paving the way toward a system that could solve drone        D. Learned Planning and Control
+racing completely end-to-end. However, these works still rely          The second paradigm of learned control is to produce the
+on explicit state estimation and a controller to execute velocity    control command directly from state inputs without requiring
+commands.                                                            a high-level trajectory planner, as shown in the architecture
+3056                                                                                        IEEE TRANSACTIONS ON ROBOTICS, VOL. 40, 2024
+
+
+
+                                                                        Two families of approaches can be used to pursue an end-to-
+                                                                     end navigation paradigm. The first is substituting each of the
+                                                                     perception, planning, and control blocks with a neural network.
+                                                                     This structure is followed by [182] and [183], where the authors
+Fig. 8.   Architecture 5: Learned planning and control.
+                                                                     train a perception-planning network and a control network using
+                                                                     imitation learning. The perception network takes raw images
+                                                                     as input and predicts waypoints to the next gate. The control
+                                                                     network uses such predictions with ground-truth velocity and
+                                                                     attitude information to predict control commands for tracking
+                                                                     the waypoints. They showed improvements over pure end-to-end
+Fig. 9.   Architecture 6: End-to-end learning.                       approaches, which directly map pixels to control commands and
+                                                                     were able to show competitive lap times on par with intermediate
+diagram of Fig. 8. This approach enabled an autonomous drone         human pilots within the Sim4CV simulator [184]. Yet, the
+with only onboard perception, for the first time, to outperform      division into independent blocks leads to compounding errors
+a professional human, and is state-of-the-art at the time of         and latencies, which negatively affect performance when flying
+writing [5]. In ADR, this was proposed in [4] and [122], where       at high speeds [150].
+a neural network policy is trained with RL to fly through a race        The second family of approaches directly maps sensor ob-
+track in simulation in near-minimum time. Major advantages           servation to commands without any modularity. This design
+of the RL-based method are its capability to handle large track      is used in [185], which to date remains the only example of
+changes and the scalability to tackle large-scale random track       the completely end-to-end racing system. Indeed, other end-
+layouts while retaining computational efficiency. In [123], deep     to-end systems generally require an inner loop controller and
+RL is combined with classical topological path planning to train     inertial information to be executed. For instance, Rojas-Perez
+robust neural network controllers for minimum-time quadrotor         and Martinez-Carranza [186] train an end-to-end CNN to di-
+flight in cluttered environments. The learned policy solves the      rectly predict roll, pitch, yaw, and altitude from camera images.
+planning and control problem simultaneously, forgoing the need       Similarly,the authors in [187] and [188] use a neural network
+for explicit trajectory planning and control.                        to predict commands directly from vision. To improve sample
+   In this same category, another class of algorithms try to ex-     complexity, they use contrastive learning to extract robust feature
+ploit the benefits of model-based and learning-based approaches      representations from images and leverage a two-stage learning-
+using differentiable optimizers approaches [176], [177], [178],      by-cheating framework.
+which leverage differentiability through controllers. For exam-         Independently of the design paradigm they follow, end-to-end
+ple, for tuning linear controllers by getting the analytic gradi-    navigation algorithms are currently bound to simulation. The
+ents [179], or for creating a differentiable prediction, planning,   reasons why no method was successfully deployed in the real
+and controller pipeline for autonomous vehicles [180]. On this       world include weak generalization to unseen environments,
+same direction, Romero et al. [181] equip the RL agent with a        large computational complexity, and inferior performance to
+differentiable MPC [176], located at the last layer of the actor     other modular methods. Another interesting observation is that
+network that provides the system with online replanning capabil-     humans can pilot a drone exclusively from visual observations.
+ities and allows the policy to predict and optimize the short-term   Conversely, except for [185], end-to-end systems still rely on the
+consequences of its actions while retaining the benefits of RL       state extracted from other measurement modalities, e.g., an IMU.
+training.                                                            The question of whether autonomous drones can race in the real
+   All these methods inherit the classic advantage of policy         world at high-speed without any inertial information remains
+learning. In addition, they do not require an external controller    open. We provide more details on this question in Section VIII.
+to track the plan. This eliminates the discrepancy between the
+planning and deployment stages, which is one of the main limita-
+tions of traditional planning methods (see Section III-B). Some      F. Discussion
+of the limitations of traditional planning remain, such as the
+requirement of a globally consistent state estimation and a map          Data-driven approaches are revolutionizing the research in
+of the environment. Also, they have not yet been demonstrated        ADR, ranging from improving the system model to end-to-end
+in sparse long-horizon planning problems, e.g., flying through a     control. Currently, the best-performing algorithms for drone
+maze at high speeds, where their performance would likely drop       racing include a learning-based component [16], [17], and
+due to sample complexity.                                            this trend is unlikely to change in the coming years. Indeed,
+                                                                     compared to classical model-driven design, they can process
+                                                                     high-dimensional sensory inputs directly, can be made robust to
+E. End-to-End Flight
+                                                                     any modeling uncertainty (e.g., latency) by simply incorporating
+   Expert pilots take raw sensory images from an FPV camera          it in the training pipeline, and require far less engineering effort
+stream and map directly to control commands. In this section, we     for tuning and deploying them [36].
+explore approaches emulating this holistic navigation paradigm           Our analysis shows that the majority of learning-based ap-
+in autonomous drones (see Fig. 9).                                   proaches heavily rely on simulators. While simulators may get
+HANOVER et al.: AUTONOMOUS DRONE RACING: A SURVEY                                                                                       3057
+
+
+
+better and faster in the near future, recent advances in real-            FlightGoggles [55] was developed as another photorealistic
+world training [189], [190] and fine tuning [191], [192] offer         simulator and was used as the primary simulation environment
+a potential alternative for zero-shot simulation to reality transfer   for the Lockheed Martin AlphaPilot challenge. FlightGoggles
+for sensorimotor policies. However, so far, these works have           contains two separate components: a photorealistic rendering en-
+been limited to legged locomotion. Extension to agile drones           gine built with Unity3D and a dynamic simulation implemented
+could lead to the successful deployment of end-to-end policies,        in C++. FlightGoggles provides an interface with real-world
+possibly improving the state of the art in agile flight.               vehicles using a motion capture system; such an interface allows
+   Another limitation of the approaches discussed in this section      the rendering of simulated images that correspond to the position
+is their inability to adapt to new and uncertain environments          of physical vehicles in the real world.
+quickly. The field of adaptive control has studied this problem           A recent simulator focused on safe RL was proposed in [198].
+extensively [193], [194], [195]. Inspired by these works, there        It uses Gazebo and the Pybullet physics engine as the backend.
+has been a recent push to use advancements in machine learning         Leaderboards for several safety-focused training environments
+within the adaptive control framework. A method to learn para-         exist, encouraging researchers to submit their approaches and
+metric uncertainty functions is introduced in [196]. These un-         compete with other researchers around the world.
+certainty functions could be learned offline using data captured          Flightmare [22] is a simulation environment featuring pho-
+from agile flight experiments, and then, embedded within an            torealistic graphics provided by the Unity engine. The physics
+adaptive controller to adjust controller parameters online during      engine is decoupled and can be swapped out with various engines
+flight. Results indicate that highly accurate trajectory tracking      for user-defined levels of simulation fidelity. Similar to Flight-
+can be achieved with this approach, even in the face of strong         Goggles, Flightmare can also provide hardware-in-the-loop sim-
+wing gusts exceeding 6.5 m/s. More recently, learning-based            ulation functions where a virtual, synthetic camera image can
+controllers have shown the ability to adapt zero-shot to large         be provided to the drone for use in control and estimation [8].
+variations in hardware and external disturbances [197]. We see            Finally, Aerial Gym [199] is a GPU-accelerated simulator that
+this as a promising area of research and one that is integral for      allows simulating millions of multirotor vehicles in parallel with
+reliable performance in changing environmental conditions.             nonlinear geometric controllers for attitude, velocity, and posi-
+                                                                       tion tracking. In addition, the simulator offers a flexible interface
+                   V. DRONE RACING SIMULATORS                          for modeling a large number of obstacles and generating data
+   One tool that has drastically accelerated the progress of           such as RGB, depth, segmentation, and optical flow.
+research in autonomous drone flight is the use of simulation
+environments that attempt to recreate the conditions that real                                VI. COMPETITIONS
+drones experience when flying. Over the years, several simula-
+tion environments have been developed for the use of general              To gauge the progress of the field as a whole, several drone
+research.                                                              racing competitions have taken place since 2016. We include a
+   In 2016, the widely used RotorS simulation environment was          graphical overview of these events in Fig. 2. The ADR com-
+published, which extends the capabilities of the popular Gazebo        petition was an annual competition that took place during the
+simulation engine to multirotors [23]. Gazebo uses the Bullet          IROS conference between 2016 and 2019. In 2016, 11 teams
+physics engine for basic dynamic simulation and contact forces.        competed in ADR and were tasked to navigate a series of gates
+Linear drag on the body of the multicopter is simulated based          in sequence. The positions of the gates were not known to the
+on the cross-sectional area and linear velocity of the simulated       participating teams ahead of time, therefore, teams flew very
+object. The RotorS extension features many easy-to-use plug-           cautiously identifying the next waypoints online. Each team was
+ins for developing multirotors, however, it distinctly lacks the       given 30 min prior to the official competition to fly the course
+photorealistic details needed to simulate accurate behavior of         as many times as they wished. The winning team, from korea
+estimation and perception pipelines.                                   advanced institute of science & technology (KAIST), made it
+   AirSim was introduced by Microsoft in 2018 as a photore-            through 10 of the 26 gates in 1 min and 26 s. For comparison, a
+alistic simulator for the control of drones [21]. It is built on       human was able to complete the entire 26-gate course in 1 min
+the unreal graphics engine and features easy-to-use plugins            31 s. A survey summarizing the approaches used for these early
+for popular flight controllers such as PX4,4 ArduPilot,5 and           competitions can be found in [19]. The following year, a similar
+others. It was used in the 2019 NeurIPS Game of Drones                 competition took place during IROS in Vancouver, Canada, with
+challenge [166]. Because of the photorealism of AirSim, it is          better results. This time, 14 teams participated and were given a
+possible to simulate the entire perception and estimation pipeline     CAD drawing of the course prior to the event with locations and
+with a good possibility of transfer to real-world drone systems.       dimensions of all gates. Only five teams participated in the final
+In addition, AirSim comes prepackaged with an OpenAI-Gym               in-person event, with the winning team making it through 9 out
+environment for training RL algorithms. Organizations such             of 13 gates in over 3 min. A summary of the winning approaches
+as Bell, Airtonomy, and NASA are using AirSim to generate              can be found in [14]. Two more ADR competitions took place
+training data for learning-based perception models.                    at IROS 2018 and 2019, with drones navigating courses faster
+                                                                       and more reliably.
+  4 [Online]. Available: https://px4.io/                                  In 2019, Lockheed Martin sponsored the AlphaPilot AI Drone
+  5 [Online]. Available: https://ardupilot.org/                        Racing Innovation Challenge where a 1 million dollar grand
+3058                                                                                      IEEE TRANSACTIONS ON ROBOTICS, VOL. 40, 2024
+
+
+
+                                                              TABLE I
+                                                 OPEN SOURCE SOFTWARE AND DATASETS
+
+
+
+
+prize was awarded to the winning team [200]. The compe-             researchers from the Robotics and Perception Group of the
+tition took place first in a virtual qualifying round that used     University of Zürich. Flight speeds exceeding 100 km/h were
+the FlightGoggles simulation environment [55]. Nine teams           demonstrated by the autonomous drones. When relying on
+out of more than 400 worldwide qualified for the final chal-        motion capture, the autonomous drones were able to achieve
+lenge, which included navigating a new track in a time-trial        significantly faster laptimes than the expert human pilots. They
+setting against an expert human pilot. Such competition took        additionally demonstrated it was possible to win races without
+the form of a tournament, with three seasonal races and a final     motion capture, using only onboard computing and sensors to
+championship race. This made it very different from previous        navigate the race track. IEEE Spectrum author E. Ackermann
+single-day competitions. Ultimately, professional pilot Gabriel     discusses the multiday event in [202].
+Kocher, from the Drone Racing League, manually piloted his             Looking into the future, the Abu Dhabi Autonomous Racing
+drone through the course in only 6 s. It took 11 s to the winner,   League recently announced plans for an ADR competition in
+MAVLab from TU Delft, and 15 s to the second-place winner,          2025.
+UZH-RPG from the University of Zürich, to complete the course
+autonomously. The two different approaches are documented
+in [16] and [17]. Further comments are provided by the winner          VII. DATASETS, HARDWARE, AND OPEN SOURCE CODE
+in [201]. Rojas-Perez and Martinez-Carranza [53] provide an           In this section, we provide an overview of the existing open
+overview of the types of hardware used for some of the drone        source code bases, useful datasets for ADR as well as hardware
+racing competitions mentioned so far.                               considerations. We first discuss datasets, and then, group the
+    In 2019, the Game of Drones competition took place at the       existing open source code bases by their use-cases in Table I
+NeurIPS conference. This competition was purely simulation-         and conclude with a brief overview over drone racing hardware.
+based and used the AirSim simulation environment built by
+Microsoft [15], [21], [166]. Participants in the Game of Drones
+competition raced against simulated opponents in a head-to-head     A. Datasets
+fashion, similar to how humans compete in FPV drone racing.            In 2018, researchers from MIT released a large-scale dataset
+Teams raced against a single simulated opponent, navigating         for perception during aggressive UAV flight [205]. This dataset
+through a complex series of gates in three different tiers: Plan-   contains over 10 h of flight data, which include simulated stereo
+ning only, perception only, and perception with planning.           and downward-facing camera images at 120 Hz, real-world IMU
+    In 2022, at the Swiss Drone Days event in Zürich, Switzer-      data at 100 Hz, motor speed data at 190 Hz, and motion capture
+land, three of the world’s best human pilots competed against       data at 360 Hz. The sensor suite was chosen such that algorithms
+HANOVER et al.: AUTONOMOUS DRONE RACING: A SURVEY                                                                                         3059
+
+
+
+like VIO or simultaneous localization and mapping could be                  size of the computer. Currently, the NVIDIA Jetson family is the
+evaluated on the dataset.                                                   smallest off-the-shelf hardware with sufficient compute to run
+   In 2019, the UZH-FPV Drone Racing Dataset was released,                  complex neural networks, and it leads to drones built on 6-in
+which contains many agile maneuvers flown by a professional                 frames. Carbon fiber offers an excellent compromise between
+racing pilot [78]. The dataset includes indoors and outdoors                the weight and durability of the frame, while other parts (such
+real-world camera images, inertial measurements, event camera               as holders for the computer) can be designed using a 3-D printer.
+data, and ground-truth poses provided by an advanced motion                    For actuation, fast-spinning brushless dc motors are ideal
+capture system (a total station) providing millimeter-level accu-           because of their high specific power output, often exceeding
+racy. In 2024, the dataset was extended with new data recorded              500 W for a 50-g motor. In general, larger propellers will
+onboard an autonomous racing drone flying in a racing track                 improve the energy efficiency of the drone [7] while smaller
+with peak speed exceeding 20 m/s. These new data include large              propellers lead to a faster motor response. On a 6-in frame,
+field-of-view camera images, inertial measurements, and ground              three-bladed 5-in propellers present a good compromise. To
+truth from a motion capture system. Similar to [205], the authors           sustain the power demand of brushless drone-racing motors
+of this dataset hope to push the state of the art in state estimation       (often exceeding 2 kW at full throttle [7]), a lithium-polymer
+during aggressive motion and have created competitions to allow             battery with a sufficiently high discharge current rating (e.g.,
+researchers to compete against one another on this agile flight             120 C) is required.
+benchmark.6 A recent effort reported in [207] open-sourced                     The Pixhawk PX4 flightstack, despite being commonly used
+high-quality data from both autonomous and human-piloted                    for quadrotors [11], [211], fixed-wings [212], and hybrid vertical
+flights. This effort enables the study of both the perception and           takeoff and landing (VTOL) platforms [213], is not optimized
+control problem without actual hardware, lowering the barrier               for agile flight. Conversely, agile autonomous research plat-
+of entry for studying drone racing.                                         forms [5], [8] use Betaflight as a low-level controller, similar
+   Research on how expert human pilots focus on their targets               to professional human racing pilots.
+during flying and provide a dataset that contains flight trajecto-             The design of a capable racing drone is important for re-
+ries, videos, and data from the pilots is examined in [206]                 searchers developing new technology. However, in many drone
+   NeuroBEM [35] is a hybrid aerodynamic quadrotor model                    racing competitions, the hardware design is not left to the
+that combines BEM theory models with learned aerodynamic                    participants but is standardized. This approach is common in
+representations from highly aggressive maneuvers. While the                 human drone racing, where thousands of identical drones are
+model is fit to the specific quadrotor platform defined in [8], the         built before each competition. This concept was also adopted by
+approach can be used for any quadrotor platform and provides                the AlphaPilot [200] competition, where all participants used a
+over 50% reduction in model prediction errors compared to                   given platform. Overall, this approach ensures fair competition.
+traditional, exclusively first-principles approaches.                          2) Beyond Quadcopters: While this survey focuses on mul-
+                                                                            ticopter drones, future drone racing competitions will go be-
+B. Open-Source Code                                                         yond this platform. Indeed, FPV fixed-wing racing is already a
+   A significant amount of ADR research has been open sourced               popular sport among human pilots [214]. For example, VTOL
+to the community, making implementation less daunting for                   drones might offer a great alternative to quadcopters. VTOL
+newcomers to the field. A collection of all known drone racing              aircraft combine the high speeds achieved by fixed-wing drones
+repositories has been provided to the reader in Table I. These              with some of the maneuverability of multicopters. Pioneering
+code bases range across controllers, planners, sensor calibration,          works on this platform have already shown agile control [215]
+and even entire software stacks dedicated to drone racing. We en-           and trajectory generation for aerobatic VTOL flight [216]. Per-
+courage both newcomers and experienced researchers to check                 haps, once such research platforms are available off the shelf,
+out the extensive amount of open source code bases available                VTOL aircraft racing will become a popular platform for ADR
+and contribute back to the community.                                       research.
+
+C. Hardware                                                                     VIII. OPEN RESEARCH QUESTIONS AND CHALLENGES
+
+   This survey does not intend to cover the hardware design                    While a lot of progress has been made, there are still many
+of racing drones rigorously. For an in-depth overview, see [8],             challenges to be overcome in drone racing research. In the
+where the hardware and software design for developing a very                following, we discuss the most interesting challenges in detail.
+capable research platform are discussed. To make this survey
+self-contained, this section presents a brief overview of the               A. Challenge 1: Reliable State Estimation at High Speeds
+hardware design of a racing drone nevertheless.                                In its current form, online, robust, and accurate state esti-
+   1) Racing Drone Design: A suitable hardware design should                mation is highly beneficial when pushing autonomous drones
+maximize the agility and acceleration of the drone, and hence, it           to their limits. Currently, classical state estimation approaches
+needs to be as lightweight as possible [210]. For drones featuring          based on VIO cannot cope with the perceptual challenges present
+onboard compute, the drone size is thus lower bounded by the                in drone racing tasks. Motion blur, low texture, and high dynamic
+                                                                            range are some reasons why classical VIO algorithms accumu-
+  6 [Online]. Available: https://fpv.ifi.uzh.ch/uzh/uzh-fpv-leader-board/   late large errors in localization. The miscalibration of intrinsic
+3060                                                                                         IEEE TRANSACTIONS ON ROBOTICS, VOL. 40, 2024
+
+
+
+and extrinsic camera parameters can lead to improper estimates        C. Challenge 3: Multiplayer Racing
+of the camera pose on a drone. This is due to local movements
+                                                                         Much of the work done up until this point on ADR has fo-
+of the camera frame relative to the drone body, as well as
+                                                                      cused on time-optimal flight without considering how a capable
+changes in temperature and pressure. VIO drift can render the
+                                                                      opponent might impact the competition dynamics. In FPV races,
+state estimates unusable unless corrected through localizations
+                                                                      pilots can compete against up to five opponents simultaneously,
+to a prior map. New sensor modalities, such as event cameras,
+                                                                      bringing about the need to anticipate how their opponents might
+could potentially alleviate this issue. Although event-aided VIO
+                                                                      behave. Humans are astonishingly capable of recognizing op-
+algorithms for drones have been proposed to improve robustness
+                                                                      portunities for overtaking and executing complex maneuvers in
+to motion blur, they have not been demonstrated at high speeds as
+                                                                      the face of large aerodynamic disturbances caused by flying
+seen in drone racing. Future research in agile flight may focus
+                                                                      close to another drone. Achieving such capabilities requires
+on finding new event representations that are computationally
+                                                                      an agent to estimate their opponent’s state using only onboard
+efficient and compatible with classical VIO formulations. One
+                                                                      visual sensors. However, these observations in drone racing are
+example is to exploit direct methods [217]. Other promising
+                                                                      sparse because the camera faces forward along the heading axis,
+sensor modalities are motor speed controllers and force sensors.
+                                                                      meaning that the only time an opponent is observable is when
+These sensor measurements could be used to include more
+                                                                      the ego-agent is behind them. Sophisticated motion and plan-
+advanced drone models in VIO, e.g., modeling aerodynamics
+                                                                      ning models that can propagate predictions of the opponents’
+effects, in order to limit the drift that accumulates where camera
+                                                                      states and racing lines through time are necessary to anticipate
+measurements are degraded. One of the main consequences of
+                                                                      collisions or overtaking opportunities. One way to simplify the
+motion blur, low texture, and high dynamic range is unreliable
+                                                                      problem is combining classical vision with learning-based con-
+feature extraction and matching. This consequently degrades
+                                                                      trol, which has shown promising results in multiagent zero-sum
+the performance of the visual frontend. Deep learning methods
+                                                                      games for locomotion [221]. An initial study [222] examined
+have the potential to solve this problem. What hinders the appli-
+                                                                      how game-theoretic planners can lead to highly competitive
+cation of these methods to drone racing at the moment is their
+                                                                      behavior in two-player drone racing, however, this work was
+computational cost. Future research should work on lightweight
+                                                                      confined to racing on a 2-D plane. The work was further extended
+neural networks that can provide inference at a high rate. Neural
+                                                                      to 3-D spaces in [223], but there is a significant opportunity for
+networks could also be used to remove nonzero mean noise and
+                                                                      researchers to explore the competitive nature of drone racing and
+constant errors from the inertial measurements. A potentially
+                                                                      develop interesting racing strategies that lead to time-optimal
+fruitful area of research is in combining neural networks for input
+                                                                      agents that are able to deal with complex opponent behavior.
+processing with a geometry-based VIO backend. This could lead
+to the next step in the research on VIO for drone racing. Current
+works [86], [218] have shown that this direction outperforms          D. Challenge 4: Safety
+end-to-end visual-based odometry methods.                                ADR research has so far focused on demonstrating that su-
+                                                                      perhuman performance in racing is possible in controlled condi-
+                                                                      tions [5] but has put less emphasis on risk and safety. We predict
+                                                                      that this trend will soon change. Adding safety to agile flight has
+B. Challenge 2: Flying From Purely Vision
+                                                                      gained much attention recently [9], [198]. Initial works focused
+   State-of-the-art autonomous navigation methods rely on vi-         on generating a collision-free trajectory [224], [225], [226] with
+sual and inertial information, usually combined with classic          less emphasis on performance. More geared toward agile flight,
+perception algorithms. Conversely, expert human pilots rely           the authors in [209], [227], [228], and [229] have studied the
+on nothing more than a FPV video stream, which they use to            problem of trading off safety and performance. All the aforemen-
+identify goals and estimate the ego-motion of the drone. Building     tioned works rely on solving constrained optimization problems.
+systems that, similarly to human pilots, only rely on visual          Outside of drone racing, similar paradigms have been developed
+information is very interesting from a scientific perspective.        and have the potential to inspire future algorithms. Such methods
+Indeed, since simulating RGB is very challenging, solving this        are, for example, conformal analysis [230], chance-constrained
+question might require lifelong learning algorithms operating         dynamic programming [231], control barrier functions [232],
+in the real world. In addition, eliminating inertial information      or reachability analysis [233]. The latter has been successfully
+might have some engineering advantages too, e.g., data through-       applied in the context of autonomous driving with collision
+put, power consumption, and lower cost. Seminal works in this         avoidance [234], [235].
+direction try to understand how humans solve this task [206],            More modern, learning-based methods have been explored
+[219]. They found that expert pilots can control drones despite       for risk-aware autonomous driving in the context of a map-
+a 200-ms latency, which is compensated by the human brain.            prediction approach [236] and in combination with Tube
+Taking inspiration from biology, a recent work [220] shows            MPC [237], a form of MPC that takes stochasticity into ac-
+that it is possible to fly with camera images and an onboard          count. However, such approaches generally do not scale to
+gyroscope (e.g., removing the accelerometer), as long as the          high-dimensional perception but rely on robust state estimation
+system never hovers. However, the aforementioned questions            for all involved agents. Combining such algorithms with the
+still remain mostly open and a good avenue for research at the        methods for vision-based, high-speed drone racing presented in
+intersection of computer vision, neuroscience, and biology.           this survey could solve both of these problems simultaneously.
+HANOVER et al.: AUTONOMOUS DRONE RACING: A SURVEY                                                                                               3061
+
+
+
+As a first step in this direction, recent work [238] has shown that   algorithmic innovations, e.g., learning sensorimotor controllers
+a learned control policy can be conditioned on an auxiliary input     in simulation, and system engineering improvements. Such ad-
+signal from a user. The signal regulates the maximally available      vances span the entire navigation pipeline: perception, planning,
+thrust, leading to a single learned policy that can race at various   and control. This article comprehensively covered each of these
+speeds and risk levels.                                               topics. Methodologically, the dominant trend was a shift from
+                                                                      conventional methods to data-driven solutions. However, in
+E. Challenge 5: Transfer to Real-World Applications                   contrast to fields like computer vision and natural language
+                                                                      processing, neural networks did not replace but coexist with
+   Drone racing, while an extraordinarily challenging research
+                                                                      traditional methods: no method with competitive performance
+environment, is ultimately not the end goal. Opportunities ex-
+                                                                      in the real world was fully data driven. The most resilient part of
+ist for technology transfer between the drone racing research
+                                                                      the pipeline was state estimation, where strong prior knowledge
+community to real-world applications such as search and res-
+                                                                      about the dynamics and environment were still needed to cope
+cue, inspection, agriculture, videography, delivery, passenger air
+                                                                      with the lack of sensorimotor data. In the short term, we pre-
+vehicles, law enforcement, and defense. However, applications
+                                                                      dicted that such a hybrid approach could be applied to other phys-
+that leverage the full agility of the platform have much to
+                                                                      ical systems, e.g., autonomous ground vehicles and personal
+gain. Drones that fly fast, fly farther, therefore, increasing the
+                                                                      robots. However, in the long term, we predicted that, similarly
+productivity of drones in every commercial sector [7].
+                                                                      to research in computer vision and natural language processing,
+   One of the major challenges to real-world application is gen-
+                                                                      neural networks will replace each part of the pipeline. This
+eralization to conditions where the environmental knowledge
+                                                                      will require many innovations, e.g., computationally efficient
+before deployment is limited. For example, we often do not have
+                                                                      architectures, offline pretraining strategies, and fast adaptation
+a known map ahead of time for real-world applications, which
+                                                                      schemes to previously unseen conditions. While autonomous
+requires simultaneous estimation of the state of the drone while
+                                                                      drones are already superhuman in controlled scenarios, many
+mapping the environment. However, a central theme of drone
+                                                                      challenges are yet to be solved to outperform human champions
+racing research has been the development of adaptive control
+                                                                      in official drone racing leagues and transfer the findings to
+strategies and decision-making algorithms to enable drones to
+                                                                      real-world applications.
+react rapidly to changes in the race track or the robot condition
+(see Section III-A and III-C). These strategies can be used to
+                                                                                                ACKNOWLEDGMENT
+handle real-world applications where environmental knowledge
+is imperfect and to enable adaptation to unforeseen obstacles            The authors would like to thank M. Muglikar for her valu-
+and challenges. In addition, learning-based sensorimotor con-         able inputs on event-camera methods for state estimation and
+trollers for drones, increasingly more popular due to research on     perception.
+racing, have been designed with the ability to generalize from           Authors’ Contributions: D. Hanover initiated the idea of
+limited data, adapt, and improve their performance over time          this article, created the article structure, and contributed to all
+(see Section IV). Such generalization and adaptation abilities        sections of this article while coordinating efforts among the
+have already been applied to cases where there is no previous         co-authors. A. Loquercio contributed to the article structure and
+knowledge of the environment [150].                                   the learning-based sections. L. Bauersfeld authored the Drone
+   Building algorithms that can continually improve from their        Modeling section and created the graphics seen throughout.
+experience is another alternative to favor this transfer. While       A. Romero contributed to the Classical Planning and Control
+recent advances in RL research point to the feasibility of this       sections. G. Cioffi contributed to the Classical Perception and
+path [191], [192], [239], it is unclear when and how such recent      Challenges sections. Y. Song contributed to the Simulators
+approaches would be applicable to drones or similarly agile           and Learning-Based Planning/Control sections. R. Penicka con-
+platforms in the real world. Collecting data for continual RL         tributed to both Classical and Learning-Based Planning sections.
+onboard a drone is notoriously difficult. This is because the drone   E. Kaufmann contributed to the article structure and throughout
+does not have the luxury of remaining in contact with the ground      the Learning-Based sections. D. Scaramuzza contributed to the
+like legged robots and cars, and thus, has to immediately know        general article structure and revised the article thoroughly and
+how to hover otherwise a crash will occur. One interesting area       critically.
+that may be useful for continual RL in drones is the notion of
+“safe-RL.” The goal of safe RL is to enable exploration without                                         REFERENCES
+ever incurring catastrophic failure of the system. Initial work on      [1] T. A. Wilkinson, Early Dynastic Egypt. Evanston, IL, USA: Routledge,
+this topic can be found in [240]. A survey article covering safe            2002.
+RL methods can be found in [9]. Furthermore, a thorough review          [2] S. M. Arab, “The sed-festival (heb sed) renewal of the kings’ reign,”
+                                                                            Arab World Books, Nov. 2017, Accessed: May 22, 2024. [Online]. Avail-
+article on continual, or life-long RL can be found in [241].                able: https://www.arabworldbooks.com/en/e-zine/the-sed-festival-heb-
+                                                                            sed-renewal-of-the-kings-reign
+                                                                        [3] J. Betz et al., “Autonomous vehicles on the edge: A survey on autonomous
+                        IX. CONCLUSION                                      vehicle racing,” IEEE Open J. Intell. Transp. Syst., vol. 3, pp. 458–488,
+  From racing at a pace comparable to walking speed [19],                   2022.
+                                                                        [4] Y. Song, A. Romero, M. Mueller, V. Koltun, and D. Scaramuzza, “Reach-
+autonomous drones have advanced to surpassing world cham-                   ing the limit in autonomous racing: Optimal control versus reinforcement
+pions [5]. Such an exponential advance has been driven by both              learning,” Sci. Robot., vol. 8, no. 82, 2023, Art. no. adg1462.
+3062                                                                                                           IEEE TRANSACTIONS ON ROBOTICS, VOL. 40, 2024
+
+
+
+  [5] E. Kaufmann, L. Bauersfeld, A. Loquercio, M. Müller, V. Koltun, and           [30] R. Gill and R. D’Andrea, “Propeller thrust and drag in forward flight,” in
+      D. Scaramuzza, “Champion-level drone racing using deep reinforcement               Proc. IEEE Conf. Control Technol. Appl., 2017, pp. 73–79.
+      learning,” Nature, vol. 620, no. 7976, pp. 982–987, Aug. 2023.                [31] R. Gill and R. D’Andrea, “Computationally efficient force and moment
+  [6] Z. Ameli, Y. Aremanda, W. A. Friess, and E. N. Landis, “Impact of UAV              models for propellers in UAV forward flight applications,” Drones, vol. 3,
+      hardware options on bridge inspection mission capabilities,” Drones,               no. 4, pp. 77–124, 2019.
+      vol. 6, no. 3, 2022, Art. no. 64.                                             [32] W. Khan and M. Nahon, “Toward an accurate physics-based UAV thruster
+  [7] L. Bauersfeld and D. Scaramuzza, “Range, endurance, and optimal speed              model,” IEEE/ASME Trans. Mechatron., vol. 18, no. 4, pp. 1269–1279,
+      estimates for multicopters,” IEEE Robot. Automat. Lett., vol. 7, no. 2,            Aug. 2013.
+      pp. 2953–2960, Apr. 2022.                                                     [33] G. Hoffmann, H. Huang, S. Waslander, and C. Tomlin, “Quadrotor
+  [8] P. Foehn et al., “Agilicious: Open-source and open-hardware agile                  helicopter flight dynamics and control: Theory and experiment,” in Proc.
+      quadrotor for vision-based flight,” Sci. Robot., vol. 7, no. 67, 2022,             AIAA Guid., Navigation Control Conf. Exhib., 2007, Art. no. 6461.
+      Art. no. eabl6259.                                                            [34] M. Bangura and R. Mahony, “Thrust control for multirotor aerial vehi-
+  [9] L. Brunke et al., “Safe learning in robotics: From learning-based control          cles,” IEEE Trans. Robot., vol. 33, no. 2, pp. 390–405, Apr. 2017.
+      to safe reinforcement learning,” Annu. Rev. Control, Robot., Auton. Syst.,    [35] L. Bauersfeld, E. Kaufmann, P. Foehn, S. Sun, and D. Scaramuzza,
+      vol. 5, pp. 411–444, 2022.                                                         “Neurobem: Hybrid aerodynamic quadrotor model,” RSS: Robot., Sci.,
+ [10] S. Jung, S. Cho, D. Lee, H. Lee, and D. H. Shim, “A direct visual servoing-        Syst., 2021, pp. 1–10.
+      based framework for the 2016 IROS autonomous drone racing challenge,”         [36] E. Kaufmann, L. Bauersfeld, and D. Scaramuzza, “A benchmark com-
+      J. Field Robot., vol. 35, no. 1, pp. 146–166, 2018.                                parison of learned control policies for agile quadrotor flight,” in Proc.
+ [11] K. Mohta et al., “Fast, autonomous flight in GPS-denied and cluttered              Int. Conf. Robot. Automat., 2022,pp. 10504–10510.
+      environments,” J. Field Robot., vol. 35, no. 1, pp. 101–120, 2018.            [37] R. Penicka and D. Scaramuzza, “Minimum-time quadrotor waypoint
+ [12] AGILEFLIGHT: Low-latency Perception and Action for Agile Vision-                   flight in cluttered environments,” IEEE Robot. Automat. Lett., vol. 7,
+      based Flight, Accessed: May 22, 2024. [Online]. Available: https://cordis.         no. 2, pp. 5719–5726, Apr. 2022.
+      europa.eu/project/id/864042                                                   [38] P. V. Diaz and S. Yoon, “High-fidelity computational aerodynamics
+ [13] AUTOASSES: Autonomous Aaerial Inspection of GNSS-Denied and                        of multi-rotor unmanned aerial vehicles,” in Proc. AIAA Aerosp. Sci.
+      Confined Critical Infrastructures, Accessed: May 22, 2024. [Online].               Meeting, 2018, Art. no. 1266.
+      Available: https://cordis.europa.eu/project/id/101120732                      [39] J. Luo, L. Zhu, and G. Yan, “Novel quadrotor forward-flight model based
+ [14] H. Moon et al., “Challenges and implemented technologies used in au-               on wake interference,” AIAA J., vol. 53, no. 12, pp. 3522–3533, 2015.
+      tonomous drone racing,” Intell. Serv. Robot., vol. 12, no. 2, pp. 137–148,    [40] G. Torrente, E. Kaufmann, P. Foehn, and D. Scaramuzza, “Data-driven
+      2019.                                                                              MPC for quadrotors,” IEEE Robot. Automat. Lett., vol. 6, no. 2,
+ [15] Microsoft, “Game of drones”, Accessed: May 22, 2024. [Online]. Avail-              pp. 3769–3776, Apr. 2021.
+      able: https://microsoft.github.io/AirSim-NeurIPS2019-Drone-Racing/            [41] S. Sun, C. C. de Visser, and Q. Chu, “Quadrotor gray-box model identifi-
+ [16] P. Foehn et al., “Alphapilot: Autonomous drone racing,” Auton. Robots,             cation from high-speed flight data,” J. Aircr., vol. 56, no. 2, pp. 645–661,
+      vol. 46, no. 1, pp. 307–320, 2022.                                                 2019.
+ [17] C. De Wagter, F. Paredes-Vallés, N. Sheth, and G. de Croon, “The artificial   [42] S. Bansal, A. K. Akametalu, F. J. Jiang, F. Laine, and C. J. Tomlin,
+      intelligence behind the winning entry to the 2019 AI robotic racing                “Learning quadrotor dynamics using neural network for flight control,”
+      competition,” Field Robot., vol. 2, pp. 1263–1290, 2022.                           in Proc. IEEE 55th Conf. Decis. Control, 2016, pp. 4653–4660.
+ [18] The Motorsport Concept Building an Autonomous Mobility Ecosys-                [43] A. Punjani and P. Abbeel, “Deep learning helicopter dynamics models,”
+      tem, [Online]. Available: https://a2rl.io/news/18/The-Motorsport-                  in Proc. IEEE Int. Conf. Robot. Automat., 2015, pp. 3223–3230.
+      Concept-Building-an-Autonomous-Mobility-Ecosystem---ASPIRE-s-                 [44] G. Shi et al., “Neural lander: Stable drone landing control using
+      Executive-Director,-Dr-Tom-McCarthy                                                learned dynamics,” in Proc. IEEE Int. Conf. Robot. Automat., 2019,
+ [19] H. Moon, Y. Sun, J. Baltes, and S. J. Kim, “The IROS 2016 competitions             pp. 9784–9790.
+      [competitions],” IEEE Robot. Automat. Mag., vol. 24, no. 1, pp. 20–29,        [45] A. van den Oord et al., “WaveNet: A generative model for raw audio,” in
+      Mar. 2017.                                                                         Proc. 9th ISCA Workshop Speech Synth. Workshop, 2016, p. 125.
+ [20] R. Mahony, V. Kumar, and P. Corke, “Multirotor aerial vehicles: Model-        [46] B. Wang, Z. Ma, S. Lai, and L. Zhao, “Neural moving horizon estimation
+      ing, estimation, and control of quadrotor,” IEEE Robot. Automat. Mag.,             for robust flight control,” IEEE Trans. Robot., vol. 40, pp. 639–659, 2024.
+      vol. 19, no. 3, pp. 20–32, Sep. 2012.                                         [47] W. Peukert, “Über die abhängigkeit der kapazität von der entlade-
+ [21] S. Shah, D. Dey, C. Lovett, and A. Kapoor, “AirSim: High-fidelity visual           stromstärke bei bleiakkumulatoren,” Elektrotechn. Zeitschr., vol. 20,
+      and physical simulation for autonomous vehicles,” in Field and Service             , pp. 287–288 1897.
+      Robotics. Berlin, Germany: Springer, 2018, pp. 621–635.                       [48] N. Galushkin, N. Yazvinskaya, and D. Galushkin, “Generalized analytical
+ [22] Y. Song, S. Naji, E. Kaufmann, A. Loquercio, and D. Scaramuzza,                    model for capacity evaluation of automotive-grade lithium batteries,” J.
+      “Flightmare: A flexible quadrotor simulator,” in Proc. Conf. Robot                 Electrochem. Soc., vol. 162, pp. A308–A314, 2015.
+      Learn., 2021, pp. 1147–1157.                                                  [49] N. Galushkin, N. N. Yazvinskaya, and D. N. Galushkin, “A critical review
+ [23] F. Furrer, M. Burri, M. Achtelik, and R. Siegwart, “Rotors–A modular               of using the Peukert equation and its generalizations for lithium-ion cells,”
+      Gazebo MAV simulator framework,” in Robot Operating System. Berlin,                J. Electrochem. Soc., vol. 167, no. 12, Aug. 2020, Art. no. 120516.
+      Germany: Springer, 2016, pp. 595–625.                                         [50] X. Zhang, W. Zhang, and G. Lei, “A review of li-ion battery equivalent
+ [24] J. Meyer, A. Sendobry, S. Kohlbrecher, U. Klingauf, and O. Von Stryk,              circuit models,” Trans. Elect. Electron. Mater., vol. 17, pp. 311–316,
+      “Comprehensive simulation of quadrotor UAVs using ROS and Gazebo,”                 2016.
+      in Proc. Int. Conf. Simul., Model., Program. Auton. Robots, 2012,             [51] L. Zhang, S. Wang, D.-I. Stroe, C. Zou, C. Fernandez, and C. Yu, “An
+      pp. 400–411.                                                                       accurate time constant parameter determination method for the varying
+ [25] R. W. Prouty, Helicopter Performance, Stability, and Control. Melbourne,           condition equivalent circuit model of lithium batteries,” Energies, vol. 13,
+      FL, USA: Krieger Pub. Co, 1995.                                                    no. 8, 2020, Art. no. 2057.
+ [26] M. Faessler, A. Franchi, and D. Scaramuzza, “Differential flatness            [52] D. Bicego, J. Mazzetto, R. Carli, M. Farina, A. Franchi, and V. Arellano-
+      of quadrotor dynamics subject to rotor drag for accurate tracking of               Quintana, “Nonlinear model predictive control with enhanced actuator
+      high-speed trajectories,” IEEE Robot. Automat. Lett., vol. 3, no. 2,               model for multi-rotor aerial vehicles with generic designs,” J. Intell.
+      pp. 620–626, Apr. 2018.                                                            Robot. Syst., vol. 100, pp. 1213–1247, 2020.
+ [27] S. Yoon, H. C. Lee, and T. H. Pulliam, “Computational analysis of multi-      [53] L. O. Rojas-Perez and J. Martinez-Carranza, “On-board processing for
+      rotor flows,” in Proc. 54th AIAA Aerosp. Sci. Meeting, 2016, Art. no. 0812.        autonomous drone racing: An overview,” Integration, vol. 80, pp. 46–59,
+ [28] P. V. Diaz and S. Yoon, “High-fidelity computational aerodynamics                  2021.
+      of multi-rotor unmanned aerial vehicles,” in Proc. AIAA Aerosp. Sci.          [54] D. Scaramuzza and F. Fraundorfer, “Visual odometry [tutorial],” IEEE
+      Meeting, 2018, Art. no. 1266.                                                      Robot. Automat. Mag., vol. 18, no. 4, pp. 80–92, Dec. 2011.
+ [29] S. Yoon, P. V. Diaz, D. D. Boyd, W. M. Chan, and C. R. Theodore,              [55] W. Guerra, E. Tal, V. Murali, G. Ryou, and S. Karaman, “FlightGoggles:
+      “Computational aerodynamic modeling of small quadcopter vehicles,”                 Photorealistic sensor simulation for perception-driven robotics using
+      in Proc. Amer. Helicopter Soc. 73rd Annu. Forum, Fort Worth, TX, USA,              photogrammetry and virtual reality,” in Proc. IEEE/RSJ Int. Conf. Intell.
+      2017, pp. 371–386.                                                                 Robots Syst., 2019, pp. 6941–6948.
+HANOVER et al.: AUTONOMOUS DRONE RACING: A SURVEY                                                                                                                 3063
+
+
+
+ [56] J. Rehder, J. Nikolic, T. Schneider, T. Hinzmann, and R. Siegwart,               [81] S. Li, E. van der Horst, P. Duernay, C. De Wagter, and G. C. de Croon,
+      “Extending kalibr: Calibrating the extrinsics of multiple IMUs and                    “Visual model-predictive localization for computationally efficient au-
+      of individual axes,” in Proc. IEEE Int. Conf. Robot. Automat., 2016,                  tonomous racing of a 72-g drone,” J. Field Robot., vol. 37, no. 4,
+      pp. 4304–4311.                                                                        pp. 667–692, 2020.
+ [57] Y. Yang, P. Geneva, X. Zuo, and G. Huang, “Online IMU intrinsic                  [82] D. Zhang and D. D. Doyle, “Gate detection using deep learning,” in Proc.
+      calibration: Is it necessary?,” in Proc. Robot., Sci. Syst., Corvallis, OR,           IEEE Aerosp. Conf., 2020, pp. 1–11.
+      USA, 2020, p. 1–10.                                                              [83] R. Szeliski, Computer Vision: Algorithms and Applications. Berlin, Ger-
+ [58] D. Scaramuzza and Z. Zhang, “Visual-inertial odometry of aerial robots,”              many: Springer Nature, 2022.
+      in Encyclopedia Robot., M. Ang, O. Khatib, and B. Siciliano, Ed., Berlin,        [84] S. Wang, R. Clark, H. Wen, and N. Trigoni, “DeepVO: Towards end-to-
+      Heidelberg: Springer, 2019, doi: 10.1007/978-3-642-41610-1_71-1.                      end visual odometry with deep recurrent convolutional neural networks,”
+ [59] J. Engel, V. Koltun, and D. Cremers, “Direct sparse odometry,” IEEE                   in Proc. IEEE Int. Conf. Robot. Automat., 2017, pp. 2043–2050.
+      Trans. Pattern Anal. Mach. Intell., vol. 40, no. 3, pp. 611–625, Mar. 2018.      [85] W. Wang, Y. Hu, and S. Scherer, “TartanVO: A generalizable learning-
+ [60] M. Bloesch, S. Omari, M. Hutter, and R. Siegwart, “Robust visual inertial             based VO,” in Proc. Conf. Robot. Learn., 2020, pp. 1761–1772.
+      odometry using a direct EKF-based approach,” in Proc. IEEE/RSJ Int.              [86] Z. Teed, L. Lipson, and J. Deng, “Deep patch visual odometry,” Adv.
+      Conf. Intell. Robots Syst., 2015, pp. 298–304.                                        Neural Inf. Process. Syst., vol. 36, p. 39033–39051, 2024.
+ [61] A. I. Mourikis and S. I. Roumeliotis, “A multi-state constraint Kalman           [87] Z. Han, Z. Wang, N. Pan, Y. Lin, C. Xu, and F. Gao, “Fast-racing: An
+      filter for vision-aided inertial navigation,” in Proc. IEEE Int. Conf. Robot.         open-source strong baseline for SE(3) planning in autonomous drone
+      Autom., 2007, pp. 3565–3572.                                                          racing,” IEEE Robot. Automat. Lett., vol. 6, no. 4, pp. 8631–8638,
+ [62] S. Leutenegger, S. Lynen, M. Bosse, R. Siegwart, and P. Furgale,                      Oct. 2021.
+      “Keyframe-based visual–inertial odometry using nonlinear optimiza-               [88] S. Spedicato and G. Notarstefano, “Minimum-time trajectory generation
+      tion,” Int. J. Robot. Res., vol. 34, no. 3, pp. 314–334, 2015.                        for quadrotors in constrained environments,” IEEE Trans. Control Syst.
+ [63] T. Qin, P. Li, and S. Shen, “VINS-Mono: A robust and versatile monoc-                 Technol., vol. 26, no. 4, pp. 1335–1344, Jul. 2018.
+      ular visual-inertial state estimator,” IEEE Trans. Robot., vol. 34, no. 4,       [89] C. Richter, A. Bry, and N. Roy, “Polynomial Trajectory planning for
+      pp. 1004–1020, Aug. 2018.                                                             aggressive quadrotor flight in dense indoor environments,” in Robotics
+ [64] E. Kaufmann et al., “Beauty and the beast: Optimal methods meet                       Research. Berlin, Germany: Springer, 2016, pp. 649–666.
+      learning for drone racing,” in Proc. Int. Conf. Robot. Automat., 2019,           [90] B. Zhou, F. Gao, J. Pan, and S. Shen, “Robust real-time UAV replanning
+      pp. 690–696.                                                                          using guided gradient-based optimization and topological paths,” in Proc.
+ [65] A. Loquercio, E. Kaufmann, R. Ranftl, A. Dosovitskiy, V. Koltun, and D.               IEEE Int. Conf. Robot. Automat., 2020, pp. 1208–1214.
+      Scaramuzza, “Deep drone racing: From simulation to reality with domain           [91] B. Zhou, J. Pan, F. Gao, and S. Shen, “RAPTOR: Robust and perception-
+      randomization,” IEEE Trans. Robot., vol. 36, no. 1, pp. 1–14, Feb. 2019.              aware trajectory replanning for quadrotor fast flight,” IEEE Trans. Robot.,
+ [66] P. Geneva, K. Eckenhoff, W. Lee, Y. Yang, and G. Huang, “OpenVINS: A                  vol. 37, no. 6, pp. 1992–2009, Dec. 2021.
+      research platform for visual-inertial estimation,” in Proc. IEEE Int. Conf.      [92] H. Pham and Q.-C. Pham, “A new approach to time-optimal path param-
+      Robot. Autom., 2020, pp. 4666–4672.                                                   eterization based on reachability analysis,” IEEE Trans. Robot., vol. 34,
+ [67] A. R. Vidal, H. Rebecq, T. Horstschaefer, and D. Scaramuzza, “Ultimate                no. 3, pp. 645–659, Jun. 2018.
+      SLAM? Combining events, images, and IMU for robust visual SLAM                   [93] I. Spasojevic, V. Murali, and S. Karaman, “Perception-aware time optimal
+      in HDR and high-speed scenarios,” IEEE Robot. Automat. Lett., vol. 3,                 path parameterization for quadrotors,” in Proc. IEEE Int. Conf. Robot.
+      no. 2, pp. 994–1001, Apr. 2018.                                                       Automat., 2020, pp. 3213–3219.
+ [68] S. Sun, G. Cioffi, C. De Visser, and D. Scaramuzza, “Autonomous                  [94] B. Penin, P. R. Giordano, and F. Chaumette, “Vision-based reactive
+      quadrotor flight despite rotor failure with onboard vision sensors: Frames            planning for aggressive target tracking while avoiding collisions and
+      vs. events,” IEEE Robot. Automat. Lett., vol. 6, no. 2, pp. 580–587,                  occlusions,” IEEE Robot. Automat. Lett., vol. 3, no. 4, pp. 3725–3732,
+      Apr. 2021.                                                                            Oct. 2018.
+ [69] P. Chen, W. Guan, and P. Lu, “ESVIO: Event-based stereo visual inertial          [95] P. Foehn, A. Romero, and D. Scaramuzza, “Time-optimal planning for
+      odometry,” IEEE Robot. Autom. Lett., vol. 8, no. 6, pp. 3661–3668,                    quadrotor waypoint flight,” Sci. Robot., vol. 6, no. 56, 2021, Art. no.
+      Jun. 2023.                                                                            eabh1221.
+ [70] B. Nisar, P. Foehn, D. Falanga, and D. Scaramuzza, “VIMO: Simulta-               [96] P. Foehn, D. Falanga, N. Kuppuswamy, R. Tedrake, and D. Scaramuzza,
+      neous visual inertial model-based odometry and force estimation,” IEEE                “Fast trajectory optimization for agile quadrotor maneuvers with a cable-
+      Robot. Automat. Lett., vol. 4, no. 3, pp. 2785–2792, Jul. 2019.                       suspended payload,” in Proc. Robot., Sci. Syst., 2017, p. 1–10.
+ [71] G. Cioffi, L. Bauersfeld, and D. Scaramuzza, “HDVIO: Improving local-            [97] M. Hehn, R. Ritz, and R. D’Andrea, “Performance benchmarking of
+      ization and disturbance estimation with hybrid dynamics VIO,” Robot.,                 quadrotor systems using time-optimal control,” Auton. Robots, vol. 33,
+      Sci. Syst., 2023.                                                                     pp. 69–88, Mar. 2012.
+ [72] G. Cioffi, L. Bauersfeld, E. Kaufmann, and D. Scaramuzza, “Learned               [98] K. Bousson and P. F. Machado, “4D trajectory generation and tracking for
+      inertial odometry for autonomous drone racing,” IEEE Robot. Automat.                  waypoint-based aerial navigation,” WSEAS Trans. Syst. Control, no. 3,
+      Lett., vol. 8, no. 5, pp. 2684–2691, May 2023.                                        pp. 105–119, 2013.
+ [73] G. Gallego et al., “Event-based vision: A survey,” IEEE Trans. Pattern           [99] S. Liu, N. Atanasov, K. Mohta, and V. Kumar, “Search-based mo-
+      Anal. Mach. Intell., vol. 44, no. 1, pp. 154–180, Jan. 2022.                          tion planning for quadrotors using linear quadratic minimum time
+ [74] Z. Ding, T. Yang, K. Zhang, C. Xu, and F. Gao, “VID-Fusion: Robust                    control,” in Proc. IEEE/RSJ Int. Conf. Intell. Robots Syst., 2017,
+      visual-inertial-dynamics odometry for accurate external force estima-                 pp. 2872–2879.
+      tion,” in Proc. IEEE Int. Conf. Robot. Automat., 2021, pp. 14469–14475.         [100] S. Liu, K. Mohta, N. Atanasov, and V. Kumar, “Search-based motion
+ [75] J. Delmerico and D. Scaramuzza, “A benchmark comparison of monoc-                     planning for aggressive flight in SE(3),” IEEE Robot. Automat. Lett.,
+      ular visual-inertial odometry algorithms for flying robots,” in Proc. IEEE            vol. 3, no. 3, pp. 2439–2446, Jul. 2018.
+      Int. Conf. Robot. Automat., 2018, pp. 2502–2509.                                [101] R. Allen and M. Pavone, “A real-time framework for kinodynamic
+ [76] M. Burri et al., “The EuRoC micro aerial vehicle datasets,” Int. J. Robot.            planning with application to quadrotor obstacle avoidance,” in Proc. AIAA
+      Res., vol. 35, no. 10, pp. 1157–1163, 2016.                                           Guid., Navigation, Control Conf., 2016, Art. no. 1374.
+ [77] P. Foehn et al., “Alphapilot: Autonomous drone racing,” Robot., Sci. Syst.,     [102] T. Zhiling, B. Chen, R. Lan, and S. Li, “Vector field guided RRT* based on
+      vol. 46, no. 1, pp. 307–320, 2020.                                                    motion primitives for quadrotor kinodynamic planning,” J. Intell. Robot.
+ [78] J. Delmerico, T. Cieslewski, H. Rebecq, M. Faessler, and D. Scaramuzza,               Syst., vol. 100, pp. 1325–1339, 2020.
+      “Are we ready for autonomous drone racing? The UZH-FPV drone racing             [103] A. Romero, S. Sun, P. Foehn, and D. Scaramuzza, “Model predictive con-
+      dataset,” in Proc. Int. Conf. Robot. Automat., 2019, pp. 6713–6719.                   touring control for time-optimal quadrotor flight,” IEEE Trans. Robot.,
+ [79] E. Kaufmann, A. Loquercio, R. Ranftl, A. Dosovitskiy, V. Koltun, and                  vol. 38, no. 6, pp. 3340–3356, Dec. 2022.
+      D. Scaramuzza, “Deep drone racing: Learning agile flight in dynamic             [104] A. Romero, R. Penicka, and D. Scaramuzza, “Time-optimal online re-
+      environments,” in Proc. 2nd Conf. Robot Learn., 2018, pp. 133–145.                    planning for agile quadrotor flight,” IEEE Robot. Automat. Lett., vol. 7,
+ [80] S. Li, M. M. Ozo, C. De Wagter, and G. C. de Croon, “Autonomous drone                 no. 3, pp. 7730–7737, Jul. 2022.
+      race: A computationally efficient vision-based navigation and control           [105] S. M. LaValle, Planning Algorithms. Cambridge, U.K.: Cambridge Univ.
+      strategy,” Robot. Auton. Syst., vol. 133, 2020, Art. no. 103621.                      Press, 2006.
+3064                                                                                                             IEEE TRANSACTIONS ON ROBOTICS, VOL. 40, 2024
+
+
+
+[106] L. Kavraki, P. Svestka, J.-C. Latombe, and M. Overmars, “Probabilistic         [132] D. Lam, C. Manzie, and M. Good, “Model predictive contouring control,”
+      roadmaps for path planning in high-dimensional configuration spaces,”                in Proc. IEEE 49th Conf. Decis. Control, 2010, pp. 6137–6142.
+      IEEE Trans. Robot. Automat., vol. 12, no. 4, pp. 566–580, Aug. 1996.           [133] A. Liniger, A. Domahidi, and M. Morari, “Optimization-based au-
+[107] S. Lavalle and J. Kuffner, “Rapidly-exploring random trees: Progress and             tonomous racing of 1:43 scale RC cars,” Optimal Control Appl. Methods,
+      prospects,” in Algorithmic and Computational Robotics: New Directions,               vol. 36, no. 5, pp. 628–647, Jul. 2014.
+      Wellesley, MA, USA: A K Peteres, Jan. 2000, pp. 293–308.                       [134] J. Arrizabalaga and M. Ryll, “Towards time-optimal tunnel-following
+[108] S. Karaman and E. Frazzoli, “Sampling-based algorithms for optimal                   for quadrotors,” in Proc. Int. Conf. Robot. Automat., 2022,
+      motion planning,” Int. J. Robot. Res., vol. 30, no. 7, pp. 846–894, 2011.            pp. 4044–4050.
+[109] P. E. Hart, N. J. Nilsson, and B. Raphael, “A formal basis for the heuristic   [135] G. Costante, C. Forster, J. Delmerico, P. Valigi, and D. Scaramuzza,
+      determination of minimum cost paths,” IEEE Trans. Syst. Sci. Cybern.,                “Perception-aware path planning,” 2016, arXiv:1605.04151.
+      vol. 4, no. 2, pp. 100–107, Jul. 1968.                                         [136] D. Falanga, E. Mueggler, M. Faessler, and D. Scaramuzza, “Aggressive
+[110] E. W. Dijkstra, “A note on two problems in connexion with graphs,” in                quadrotor flight through narrow gaps with onboard sensing and comput-
+      Proc. Edsger Wybe Dijkstra: His Life, Work, Legacy, 1959, pp. 269–271.               ing using active vision,” in Proc. IEEE Int. Conf. Robot. Automat., 2017,
+[111] D. Mellinger and V. Kumar, “Minimum snap trajectory generation and                   pp. 5774–5781.
+      control for quadrotors,” in Proc. IEEE Int. Conf. Robot. Autom., 2011,         [137] B. Penin, R. Spica, P. R. Giordano, and F. Chaumette, “Vision-based
+      pp. 2520–2525.                                                                       minimum-time trajectory generation for a quadrotor UAV,” in Proc.
+[112] D. Mellinger, N. Michael, and V. Kumar, “Trajectory generation and                   IEEE/RSJ Int. Conf. Intell. Robots Syst., 2017, pp. 6199–6206.
+      control for precise aggressive maneuvers with quadrotors,” Int. J. Robot.      [138] J. Tordesillas and J. P. How, “Deep-panther: Learning-based perception-
+      Res., vol. 31, no. 5, pp. 664–674, 2012.                                             aware trajectory planner in dynamic environments,” IEEE Robot. Au-
+[113] M. W. Müeller, M. Hehn, and R. D’Andrea, “A computationally efficient                tomat. Lett., vol. 8, no. 3, pp. 1399–1406, Mar. 2023.
+      motion primitive for quadrocopter trajectory generation,” IEEE Trans.          [139] J. Tordesillas and J. P. How, “PANTHER: Perception-aware tra-
+      Robot., vol. 31, no. 6, pp. 1294–1310, Dec. 2015.                                    jectory planner in dynamic environments,” IEEE Access, vol. 10,
+[114] C. Qin, M. S. Michet, J. Chen, and H. H.-T. Liu, “Time-optimal gate-                 pp. 22662–22677, 2022.
+      traversing planner for autonomous drone racing,” in Proc. IEEE Int. Conf.      [140] D. Falanga, P. Foehn, P. Lu, and D. Scaramuzza, “PAMPC: Perception-
+      Robot. Automat., 2024.                                                               aware model predictive control for quadrotors,” in Proc. IEEE/RSJ Int.
+[115] Z. Wang, X. Zhou, C. Xu, and F. Gao, “Geometrically constrained                      Conf. Intell. Robots Syst., 2018, pp. 1–8.
+      trajectory optimization for multicopters,” IEEE Trans. Robot., vol. 38,        [141] K. Lee, J. Gibson, and E. A. Theodorou, “Aggressive perception-aware
+      no. 5, pp. 3259–3278, Oct. 2022.                                                     navigation using deep optical flow dynamics and pixelMPC,” IEEE
+[116] T. Fork and F. Borrelli, “Euclidean and non-Euclidean trajectory opti-               Robot. Automat. Lett., vol. 5, no. 2, pp. 1207–1214, Apr. 2020.
+      mization approaches for quadrotor racing,” 2023, arXiv:2309.07262.             [142] M. Greeff, T. D. Barfoot, and A. P. Schoellig, “A perception-aware
+[117] W. V. Loock, G. Pipeleers, and J. Swevers, “Time-optimal quadrotor                   flatness-based model predictive controller for fast vision-based multirotor
+      flight,” in Proc. IEEE Eur. Control Conf., 2013, pp. 1788–1792.                      flight,” IFAC-PapersOnLine, vol. 53, no. 2, pp. 9412–9419, 2020.
+[118] T. R. Jorris and R. G. Cobb, “Three-dimensional trajectory optimization        [143] R. Verschueren et al., “Acados—A modular open-source framework for
+      satisfying waypoint and no-fly zone constraints,” J. Guidance, Control,              fast embedded optimal control,” Math. Program. Comput., vol. 14, no. 1,
+      Dyn., vol. 32, no. 2, pp. 551–572, 2009.                                             pp. 147–183, 2022.
+[119] D. J. Webb and J. van den Berg, “Kinodynamic RRT*: Asymptotically              [144] J. Mattingley and S. Boyd, “CVXGEN: A code generator for embedded
+      optimal motion planning for robots with linear dynamics,” in Proc. IEEE              convex optimization,” Optim. Eng., vol. 13, no. 1, pp. 1–27, 2012.
+      Int. Conf. Robot. Automat., 2013, pp. 5054–5061.                               [145] G. Frison and M. Diehl, “HPIPM: A high-performance quadratic
+[120] B. Ichter, B. Landry, E. Schmerling, and M. Pavone, “Perception-aware                programming framework for model predictive control,” IFAC-
+      motion planning via multiobjective search on gpus,” in Robotics Re-                  PapersOnLine, vol. 53, no. 2, pp. 6563–6569, 2020.
+      search. Cham: Springer, 2020, pp. 895–912.                                     [146] MOSEK ApS, “MOSEK optimization toolbox for MATLAB,” User’s
+[121] E. Kaufmann, A. Loquercio, R. Ranftl, M. Müller, V. Koltun, and D.                   Guide Reference Manual, vol. 4, no. 1, 2019.
+      Scaramuzza, “Deep drone acrobatics,” in Proc. Robot., Sci. Syst., Cor-         [147] A. Giusti et al., “A machine learning approach to visual perception of
+      valis, OR, USA, 2020, pp. 1–10.                                                      forest trails for mobile robots,” IEEE Robot. Automat. Lett., vol. 1, no. 2,
+[122] Y. Song, M. Steinweg, E. Kaufmann, and D. Scaramuzza, “Autonomous                    pp. 661–667, Jul. 2016.
+      drone racing with deep reinforcement learning,” in Proc. IEEE/RSJ Int.         [148] A. Loquercio, A. I. Maqueda, C. R. Del-Blanco, and D. Scaramuzza,
+      Conf. Intell. Robots Syst., 2021, pp. 1205–1212.                                     “DroNet: Learning to fly by driving,” IEEE Robot. Automat. Lett., vol. 3,
+[123] R. Penicka, Y. Song, E. Kaufmann, and D. Scaramuzza, “Learning                       no. 2, pp. 1088–1095, Apr. 2018.
+      minimum-time flight in cluttered environments,” IEEE Robot. Automat.           [149] D. Gandhi, L. Pinto, and A. Gupta, “Learning to fly by crashing,” in Proc.
+      Lett., vol. 7, no. 3, pp. 7209–7216, Jul. 2022.                                      Int. Conf. Intell. Robots Syst., 2017, pp. 3948–3955.
+[124] D. Hanover, P. Foehn, S. Sun, E. Kaufmann, and D. Scaramuzza,                  [150] A. Loquercio, E. Kaufmann, R. Ranftl, M. Müller, V. Koltun, and D.
+      “Performance, precision, and payloads: Adaptive nonlinear MPC for                    Scaramuzza, “Learning high-speed flight in the wild,” Sci. Robot., vol. 6,
+      quadrotors,” IEEE Robot. Automat. Lett., vol. 7, no. 2, pp. 690–697,                 no. 59, 2021, Art. no. eabg5810.
+      Apr. 2022.                                                                     [151] F. Sadeghi and S. Levine, “CAD 2 RL: Real single-image flight without
+[125] S. Sun, A. Romero, P. Foehn, E. Kaufmann, and D. Scaramuzza, “A                      a single real image,” in Proc. Robot., Sci. Syst., 2017, pp. 48–55.
+      comparative study of nonlinear MPC and differential-flatness-based             [152] T. Lee, S. Mckeever, and J. Courtney, “Flying free: A research overview
+      control for quadrotor agile flight,” IEEE Trans. Robot., vol. 38, no. 6,             of deep learning in drone navigation autonomy,” Drones, vol. 5, no. 2,
+      pp. 3357–3373, Dec. 2022.                                                            2021, Art. no. 52.
+[126] T. Lee, M. Leok, and N. H. McClamroch, “Geometric tracking control of          [153] H. X. Pham, H. I. Ugurlu, J. Le Fevre, D. Bardakci, and E. Kayacan,
+      a quadrotor UAV for extreme maneuverability,” IFAC Proc. Vol., vol. 44,              “Deep learning for vision-based navigation in autonomous drone racing,”
+      no. 1, pp. 6337–6342, 2011.                                                          in Deep Learning for Robot Perception and Cognition. New York, NY,
+[127] E. Tal and S. Karaman, “Accurate tracking of aggressive quadrotor trajec-            USA: Elsevier, 2022, pp. 371–406.
+      tories using incremental nonlinear dynamic inversion and differential flat-    [154] A. A. Cabrera-Ponce, L. O. Rojas-Perez, J. A. Carrasco-Ochoa, J. F.
+      ness,” IEEE Trans. Control Syst. Technol., vol. 29, no. 3, pp. 1203–1218,            Martinez-Trinidad, and J. Martinez-Carranza, “Gate detection for micro
+      May 2021.                                                                            aerial vehicles using a single shot detector,” IEEE Latin Amer. Trans.,
+[128] H. Nguyen, M. Kamel, K. Alexis, and R. Siegwart, “Model predictive                   vol. 17, no. 12, pp. 2045–2052, Dec. 2019.
+      control for micro aerial vehicles: A survey,” in Proc. Eur. Control Conf.,     [155] H. X. Pham, I. Bozcan, A. Sarabakha, S. Haddadin, and E. Kayacan,
+      2021, pp. 1556–1563.                                                                 “GateNet: An efficient deep neural network architecture for gate per-
+[129] M. Kamel, M. Burri, and R. Siegwart, “Linear vs nonlinear MPC for                    ception using fish-eye camera in autonomous drone racing,” in Proc.
+      trajectory tracking applied to rotary wing micro aerial vehicles,” IFAC-             IEEE/RSJ Int. Conf. Intell. Robots Syst., 2021, pp. 4176–4183.
+      PapersOnLine, vol. 50, no. 1, pp. 3463–3469, 2017.                             [156] H. X. Pham, A. Sarabakha, M. Odnoshyvkin, and E. Kayacan, “Pencil-
+[130] G. Williams, A. Aldrich, and E. A. Theodorou, “Model predictive path                 Net: Zero-shot sim-to-real transfer learning for robust gate perception
+      integral control: From theory to parallel computation,” J. Guid., Control,           in autonomous drone racing,” IEEE Robot. Automat. Lett., vol. 7, no. 4,
+      Dyn., vol. 40, no. 2, pp. 344–357, 2017.                                             pp. 11847–11854, Oct. 2022.
+[131] B. Goldfain et al., “Autorally: An open platform for aggressive au-            [157] T. Morales, A. Sarabakha, and E. Kayacan, “Image generation for effi-
+      tonomous driving,” IEEE Control Syst. Mag., vol. 39, no. 1, pp. 26–55,               cient neural network training in autonomous drone racing,” in Proc. Int.
+      Feb. 2019.                                                                           Joint Conf. Neural Netw., 2020, pp. 1–8.
+HANOVER et al.: AUTONOMOUS DRONE RACING: A SURVEY                                                                                                                3065
+
+
+
+[158] K. F. Andersen, H. X. Pham, H. I. Ugurlu, and E. Kayacan, “Event-             [184] M. Müller, V. Casser, J. Lahoud, N. Smith, and B. Ghanem, “Sim4CV:
+      based navigation for autonomous drone racing with sparse gated recurrent            A photo-realistic simulator for computer vision applications,” Int. J.
+      network,” in Proc. Eur. Control Conf., 2022, pp. 1342–1348.                         Comput. Vis., vol. 126, no. 9, pp. 902–919, 2018.
+[159] N. J. Sanket, C. D. Singh, C. Fermüller, and Y. Aloimonos, “PRGFlow:          [185] M. Muller, V. Casser, N. Smith, D. L. Michels, and B. Ghanem, “Teaching
+      Unified swap-aware deep global optical flow for aerial robot navigation,”           UAVs to race: End-to-end regression of agile controls in simulation,” in
+      Electron. Lett., vol. 57, no. 16, pp. 614–617, 2021.                                Proc. Eur. Conf. Comput. Vis. Workshops, 2018, pp. 11–29.
+[160] Y. Xu and G. C. de Croon, “CNN-based ego-motion estimation for                [186] L. O. Rojas-Perez and J. Martinez-Carranza, “DeepPilot: A CNN for
+      fast MAV maneuvers,” in Proc. IEEE Int. Conf. Robot. Automat., 2021,                autonomous drone racing,” Sensors, vol. 20, no. 16, 2020, Art. no. 4524.
+      pp. 7606–7612.                                                                [187] J. Fu, Y. Song, Y. Wu, F. Yu, and D. Scaramuzza, “Learning deep
+[161] Y. Xu and G. C. de Croon, “CUAHN-VIO: Content-and-uncertainty-                      sensorimotor policies for vision-based autonomous drone racing,” in
+      aware homography network for visual-inertial odometry,” 2022,                       Proc. IEEE/RSJ Int. Conf. Intell. Robots Syst., 2023, pp. 5243–
+      arXiv:2208.13935.                                                                   5250.
+[162] L. Lamberti et al., “A sim-to-real deep learning-based framework for          [188] J. Xing, L. Bauersfeld, Y. Song, C. Xing, and D. Scaramuzza, “Contrastive
+      autonomous nano-drone racing,” IEEE Robot. Automat. Lett., vol. 9, no. 2,           learning for enhancing robust scene transfer in vision-based agile flight,”
+      pp. 1899–1906, Feb. 2024.                                                           in Proc. IEEE Int. Conf. Robot. Automat., 2024.
+[163] H. Yu, C. De Wagter, and G. C. de Croon, “MAVRL: Learn to fly in              [189] P. Wu, A. Escontrela, D. Hafner, P. Abbeel, and K. Goldberg, “Day-
+      cluttered environments with varying speed,” 2024, arXiv:2402.08381.                 dreamer: World models for physical robot learning,” in Proc. Conf. Robot
+[164] M. Kulkarni and K. Alexis, “Reinforcement learning for collision-free               Learn., 2023, pp. 2226–2240.
+      flight exploiting deep collision encoding,” in Proc. IEEE Int. Conf. Robot.   [190] L. Smith, I. Kostrikov, and S. Levine, “Demonstrating a walk in the park:
+      Automat., 2024.                                                                     Learning to walk in 20 minutes with model-free reinforcement learning,”
+[165] K. Amer, M. Samy, M. Shaker, and M. ElHelw, “Deep convolutional                     in Proc. Robot., Sci. Syst. XIX, 2023, pp. 1–9.
+      neural network based autonomous drone navigation,” in Proc. 13th Int.         [191] L. Smith, J. C. Kew, X. B. Peng, S. Ha, J. Tan, and S. Levine, “Legged
+      Conf. Mach. Vis., 2021, vol. 11605, pp. 16–24.                                      robots that keep on learning: Fine-tuning locomotion policies in the real
+[166] R. Madaan et al., “Airsim drone racing lab,” in Proc. NeurIPS Competition           world,” in Proc. Int. Conf. Robot. Automat., 2022, pp. 1593–1599.
+      Demonstration Track, 2020, vol. 123, pp. 177–191.                             [192] A. Loquercio, A. Kumar, and J. Malik, “Learning visual locomotion
+[167] U. Ates, “Long-term planning with deep reinforcement learning on au-                with cross-modal supervision,” in Proc. IEEE Int. Conf. Robot. Automat.,
+      tonomous drones,” in Proc. Innov. Intell. Syst. Appl. Conf., 2020, pp. 1–6.         2023, pp. 7295–7302.
+[168] W. Koch, R. Mancuso, R. West, and A. Bestavros, “Reinforcement                [193] P. A. Ioannou and J. Sun, Robust Adaptive Control, Ed., Mineola, New
+      learning for UAV attitude control,” ACM Trans. Cyber-Phys. Syst., vol. 3,           York, USA: Dover Publications, 2012.
+      no. 2, pp. 1–21, 2019.                                                        [194] K. J. Åström and B. Wittenmark, Adaptive Control, Ed., Mineola, New
+[169] N. O. Lambert, D. S. Drew, J. Yaconelli, S. Levine, R. Calandra, and                York, USA: Dover Publications, 2013.
+      K. S. Pister, “Low-level control of a quadrotor with deep model-based         [195] E. Lavretsky and K. A. Wise, “Robust adaptive control,” in Robust and
+      reinforcement learning,” IEEE Robot. Automat. Lett., vol. 4, no. 4,                 Adaptive Control. Berlin, Germany: Springer, 2013, pp. 1–449.
+      pp. 4224–4230, Oct. 2019.                                                     [196] S. M. Richards, N. Azizan, J.-J. Slotine, and M. Pavone, “Adaptive-
+[170] S. Li, E. Öztürk, C. De Wagter, G. C. De Croon, and D. Izzo, “Aggres-               control-Oriented meta-learning for nonlinear systems,” in Proc. Robot.,
+      sive online control of a quadrotor via deep network representations of              Sci. Syst., 2021, pp. 1–12.
+      optimality principles,” in Proc. IEEE Int. Conf. Robot. Automat., 2020,       [197] D. Zhang, A. Loquercio, X. Wu, A. Kumar, J. Malik, and M. W. Mueller,
+      pp. 6282–6287.                                                                      “Learning a single near-hover position controller for vastly different
+[171] C. Sánchez-Sánchez and D. Izzo, “Real-time optimal control via deep                 quadcopters,” in Proc. IEEE Int. Conf. Robot. Automat., 2023, pp. 1263–
+      neural networks: Study on landing problems,” J. Guid., Control, Dyn.,               1269.
+      vol. 41, no. 5, pp. 1122–1135, 2018.                                          [198] J. Panerati, H. Zheng, S. Zhou, J. Xu, A. Prorok, and A. P. Schoellig,
+[172] R. Ferede, G. de Croon, C. De Wagter, and D. Izzo, “End-to-end neural               “Learning to fly–A gym environment with pybullet physics for reinforce-
+      network based optimal quadcopter control,” Robot. Auton. Syst., vol. 172,           ment learning of multi-agent quadcopter control,” in Proc. IEEE/RSJ Int.
+      2024, Art. no. 104588.                                                              Conf. Intell. Robots Syst., 2021, pp. 7512–7519.
+[173] J. Sacks, R. Rana, K. Huang, A. Spitzer, G. Shi, and B. Boots, “Deep          [199] M. Kulkarni, T. J. Forgaard, and K. Alexis, “Aerial gym–Isaac gym
+      model predictive optimization,” in Proc. IEEE Int. Conf. Robot. Automat.,           simulator for aerial robots,” 2023, arXiv:2305.16510.
+      2024.                                                                         [200] L. Martin, “Alphapilot AI drone innovation challenge,” Jan. 2020.
+[174] H. Dai, B. Landry, L. Yang, M. Pavone, and R. Tedrake, “Lyapunov-                   [Online]. Available: https://lockheedmartin.com/en-us/news/events/ai-
+      stable neural-network control,” in Proc. Robot., Sci. Syst., Virtual, 2021,         innovation-challenge.html
+      pp. 1–12.                                                                     [201] C. de Wagter, F. Paredes-Vallés, N. Sheth, and G. C. de Croon, “Learning
+[175] M. Selim, A. Alanwar, S. Kousik, G. Gao, M. Pavone, and K. H.                       fast in autonomous drone racing,” Nat. Mach. Intell., vol. 3, 2021,
+      Johansson, “Safe reinforcement learning using black-box reachability                Art. no. 923.
+      analysis,” IEEE Robot. Automat. Lett., vol. 7, no. 4, pp. 10665–10672,        [202] E. Ackerman, “Autonomous drones challenge human champions in first
+      Oct. 2022.                                                                          ‘fair’ race,” Jul. 2022. Accessed: May 22, 2024, [Online]. Available:
+[176] B. Amos, I. Jimenez, J. Sacks, B. Boots, and J. Z. Kolter, “Differentiable          https://spectrum.ieee.org/zurich-autonomous-drone-race
+      MPC for end-to-end planning and control,” Adv. Neural Inf. Process.           [203] Y. Song and D. Scaramuzza, “Policy search for model predictive control
+      Syst., vol. 31, pp. 8299–8310, 2018.                                                with application to agile drone flight,” IEEE Trans. Robot., vol. 38, no. 4,
+[177] L. Pineda et al., “Theseus: A library for differentiable nonlinear opti-            pp. 2114–2130, Aug. 2022.
+      mization,” Adv. Neural Inf. Process. Syst., vol. 35, pp. 3801–3818, 2022.     [204] A. Loquercio, A. Saviolo, and D. Scaramuzza, “Autotune: Controller
+[178] C. Wang et al., “PyPose: A library for robot learning with physics-based            tuning for high-speed flight,” IEEE Robot. Automat. Lett., vol. 7, no. 2,
+      optimization,” in Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recognit.,              pp. 4432–4439, Apr. 2022.
+      2023, pp. 22024–22034.                                                        [205] A. Antonini, W. Guerra, V. Murali, T. Sayre-McCord, and S. Kara-
+[179] S. Cheng, L. Song, M. Kim, S. Wang, and N. Hovakimyan, “DiffTune+ :                 man, “The blackbird dataset: A large-scale dataset for UAV percep-
+      Hyperparameter-free auto-tuning using auto-differentiation,” in Proc. 5th           tion in aggressive flight,” in Proc. Int. Symp. Exp. Robot., 2018,
+      Annu. Learn. Dyn. Control Conf., 2023, vol. 211, pp. 170–183.                       pp. 130–139.
+[180] P. Karkus, B. Ivanovic, S. Mannor, and M. Pavone, “DiffStack: A dif-          [206] C. Pfeiffer and D. Scaramuzza, “Human-piloted drone racing: Visual
+      ferentiable and modular control stack for autonomous vehicles,” in Proc.            processing and control,” IEEE Robot. Automat. Lett., vol. 6, no. 2,
+      Conf. Robot Learn., 2023, pp. 2170–2180.                                            pp. 3467–3474, Apr. 2021.
+[181] A. Romero, Y. Song, and D. Scaramuzza, “Actor-critic model predictive         [207] M. Bosello et al., “Race against the machine: A fully-annotated, open-
+      control,” in Proc. IEEE Int. Conf. Robot. Automat., 2024.                           design dataset of autonomous and piloted high-speed flight,” IEEE Robot.
+[182] G. Li, M. Mueller, V. M. Casser, N. Smith, D. Michels, and B. Ghanem,               Automat. Lett., vol. 9, no. 4, pp. 3799–3806, Apr. 2024.
+      “Oil: Observational imitation learning,” in Proc. Robot., Sci. Syst.,         [208] X. Zhou, Z. Wang, H. Ye, C. Xu, and F. Gao, “EGO-Planner: An ESDF-
+      Freiburg im Breisgau, Germany, 2019, pp. 1–10.                                      free gradient-based local planner for quadrotors,” IEEE Robot. Automat.
+[183] M. Muller, G. Li, V. Casser, N. Smith, D. L. Michels, and B. Ghanem,                Lett., vol. 6, no. 2, pp. 478–485, Apr. 2021.
+      “Learning a controller fusion network by online trajectory filtering for      [209] J. Tordesillas and J. P. How, “FASTER: Fast and safe trajectory planner
+      vision-based UAV racing,” in Proc. IEEE/CVF Conf. Comput. Vis. Pattern              for navigation in unknown environments,” IEEE Trans. Robot., vol. 38,
+      Recognit. Workshops, 2019, pp. 573–581.                                             no. 2, pp. 922–938, Apr. 2022.
+3066                                                                                                            IEEE TRANSACTIONS ON ROBOTICS, VOL. 40, 2024
+
+
+
+[210] V. Kumar and N. Michael, “Opportunities and challenges with au-               [233] S. Bansal, M. Chen, S. Herbert, and C. J. Tomlin, “Hamilton-Jacobi
+      tonomous micro aerial vehicles,” Int. J. Robot. Res., vol. 31, no. 11,              reachability: A brief overview and recent advances,” in Proc. IEEE 56th
+      pp. 1279–1291, 2012.                                                                Annu. Conf. Decis. Control, 2017, pp. 2242–2253.
+[211] T. Baca et al., “The MRS UAV system: Pushing the frontiers of re-             [234] X. Wang, K. Leung, and M. Pavone, “Infusing reachability-based safety
+      producible research, real-world deployment, and education with au-                  into planning and control for multi-agent interactions,” in Proc. IEEE/RSJ
+      tonomous unmanned aerial vehicles,” J. Intell. Robot. Syst., vol. 102,              Int. Conf. Intell. Robots Syst., 2020, pp. 6252–6259.
+      no. 1, Apr. 2021, Art. no. 26.                                                [235] K. Leung et al., “On infusing reachability-based safety assurance within
+[212] L. Meier, P. Tanskanen, L. Heng, G. H. Lee, F. Fraundorfer, and M.                  planning frameworks for human–robot vehicle interactions,” Int. J. Robot.
+      Pollefeys, “PIXHAWK: A micro aerial vehicle design for autonomous                   Res., vol. 39, no. 10-11, pp. 1326–1345, 2020.
+      flight using onboard computer vision,” Auton. Robots, vol. 33, no. 1,         [236] A. Elhafsi, B. Ivanovic, L. Janson, and M. Pavone, “Map-predictive
+      pp. 21–39, Aug. 2012.                                                               motion planning in unknown environments,” in Proc. IEEE Int. Conf.
+[213] L. Bauersfeld, L. Spannagl, G. Ducard, and C. Onder, “MPC flight                    Robot. Automat., 2020, pp. 8552–8558.
+      control for a tilt-rotor VTOL aircraft,” IEEE Trans. Aerosp. Electron.        [237] K. P. Wabersich, L. Hewing, A. Carron, and M. N. Zeilinger, “Proba-
+      Syst., vol. 57, no. 4, pp. 2395–2409, Aug. 2021.                                    bilistic model predictive safety certification for learning-based control,”
+[214] “FPV wing racing association”. [Online]. Accessed: May 22, 2024,                    IEEE Trans. Autom. Control, vol. 67, no. 1, pp. 176–188, Jan. 2022.
+      Available: https://wrl-uk.com/                                                [238] L. Bauersfeld, E. Kaufmann, and D. Scaramuzza, “User-conditioned
+[215] E. Tal and S. Karaman, “Global incremental flight control for agile                 neural control policies for mobile robotics,” in Proc. Int. Conf. Robot.
+      maneuvering of a tailsitter flying wing,” J. Guid., Control, Dyn., vol. 45,         Automat., 2023, pp. 1342–1348.
+      no. 12, pp. 2332–2349, 2022.                                                  [239] T. Yu et al., “Meta-world: A benchmark and evaluation for multi-task
+[216] E. Tal, G. Ryou, and S. Karaman, “Aerobatic trajectory generation for               and meta reinforcement learning,” in Proc. Conf. Robot Learn., 2019,
+      a VTOL fixed-wing aircraft using differential flatness,” IEEE Trans.                pp. 1094–1100.
+      Robot., vol. 39, no. 6, pp. 4805–4819, Dec. 2023.                             [240] M. Turchetta, A. Kolobov, S. Shah, A. Krause, and A. Agarwal, “Safe re-
+[217] J. Hidalgo-Carrió, G. Gallego, and D. Scaramuzza, “Event-aided direct               inforcement learning via curriculum induction,” Adv. Neural Inf. Process.
+      sparse odometry,” in Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recog-               Syst., vol. 33, pp. 12151–12162, 2020.
+      nit., 2022, pp. 5781–5790.                                                    [241] K. Khetarpal, M. Riemer, I. Rish, and D. Precup, “Towards continual
+[218] Z. Teed and J. Deng, “DROID-SLAM: Deep visual slam for monocular,                   reinforcement learning: A review and perspectives,” J. Artif. Intell. Res.,
+      stereo, and RGB-D cameras,” Adv. Neural Inf. Process. Syst., vol. 34,               vol. 75, pp. 1401–1476, 2022.
+      pp. 16558–16569, 2021.
+[219] C. Pfeiffer, S. Wengeler, A. Loquercio, and D. Scaramuzza, “Visual
+      attention prediction improves performance of autonomous drone racing
+      agents,” PLoS One, vol. 17, no. 3, 2022, Art. no. e0264471.
+[220] G. C. de Croon, J. J. Dupeyroux, C. De Wagter, A. Chatterjee, D. A.
+      Olejnik, and F. Ruffier, “Accommodating unobservability to control flight                               Drew Hanover received the bachelor’s degree in me-
+      attitude with optic flow,” Nature, vol. 610, no. 7932, pp. 485–490, 2022.                               chanical engineering from Michigan Technological
+[221] A. Bajcsy, A. Loquercio, A. Kumar, and J. Malik, “Learning vision-based                                 University, Houghton, MI, USA, in 2018 and the
+      pursuit-evasion robot policies,” in Proc. IEEE Int. Conf. Robot. Automat.,                              master’s degree in robotics from the University of
+      2024.                                                                                                   Michigan, Ann Arbor, MI, in 2022.
+[222] R. Spica, D. Falanga, E. Cristofalo, E. Montijano, D. Scaramuzza, and                                     He has worked with NASA, General Motors, and
+      M. Schwager, “A real-time game theoretic planner for autonomous two-                                    Pratt and Miller Engineering across a multitude of en-
+      player drone racing,” in Proc. Robot., Sci. Syst., 2018, pp. 1–9.                                       gineering domains. He is currently the Chief Technol-
+[223] Z. Wang, T. Taubner, and M. Schwager, “Multi-agent sensitivity en-                                      ogy Officer and the Founder of Innovire AG, Zürich,
+      hanced iterative best response: A real-time game theoretic planner for                                  Switzerland.
+      drone racing in 3D environments,” Robot. Auton. Syst., vol. 125, 2020,
+      Art. no. 103410.
+[224] J. Chen, K. Su, and S. Shen, “Real-time safe trajectory generation for
+      quadrotor flight in cluttered environments,” in Proc. IEEE Int. Conf.
+      Robot. Biomimetics, 2015, pp. 1678–1685.
+[225] F. Gao, Y. Lin, and S. Shen, “Gradient-based online safe trajectory gener-                              Antonio Loquercio received the M.Sc. degree in
+      ation for quadrotor flight in complex environments,” in Proc. IEEE/RSJ                                  robotics from ETH Zürich, Zürich, Switzerland, in
+      Int. Conf. Intell. Robots Syst., 2017, pp. 3681–3688.                                                   2017, and the Ph.D. degree in robotics from the
+[226] F. Gao, W. Wu, Y. Lin, and S. Shen, “Online safe trajectory generation for                              University of Zürich, Zürich, in 2021.
+      quadrotors using fast marching method and Bernstein basis polynomial,”                                     He worked with the Berkeley Artificial Intelligence
+      in Proc. IEEE Int. Conf. Robot. Automat., 2018, pp. 344–351.                                            Research Lab, UC Berkeley, Berkeley, CA, USA,
+[227] Y.-L. Chow, M. Pavone, B. M. Sadler, and S. Carpin, “Trading safety                                     from 2022 to 2024. He is currently a Professor of
+      versus performance: Rapid deployment of robotic swarms with robust                                      electrical engineering and computer science with the
+      performance constraints,” J. Dyn. Syst., Meas., Control, vol. 137, no. 3,                               University of Pennsylvania, Philadelphia, PA, USA.
+      2015, Art. no.031005.
+[228] S. Singh, A. Majumdar, J.-J. Slotine, and M. Pavone, “Robust online
+      motion planning via contraction theory and convex optimization,” in
+      Proc. IEEE Int. Conf. Robot. Automat., 2017, pp. 5883–5890.
+[229] S. Singh, M. Chen, S. L. Herbert, C. J. Tomlin, and M. Pavone, “Robust
+      tracking with model mismatch for fast and safe planning: An SOS                                         Leonard Bauersfeld (Graduate Student Member,
+      optimization approach,” in Proc. 13th Workshop Algorithmic Found.                                       IEEE) received the M.Sc. degree in robotics, system
+      Robot., 2020, pp. 545–564.                                                                              and control from ETH Zürich, Zürich, Switzerland
+[230] R. Luo et al., “Sample-efficient safety assurances using conformal                                      in 2020. He is currently working toward the Ph.D.
+      prediction,” in Proc. Int. Workshop Algorithmic Found. Robot., 2022,                                    degree with the Robotics and Perception Group, Uni-
+      pp. 149–169.                                                                                            versity of Zürich, under the supervision of Prof. D.
+[231] M. Ono, M. Pavone, Y. Kuwata, and J. Balaram, “Chance-constrained                                       Scaramuzza.
+      dynamic programming with application to risk-aware robotic space ex-                                       He works on novel approaches, combining first-
+      ploration,” Auton. Robots, vol. 39, pp. 555–571, 2015.                                                  principles methods with modern data-driven models
+[232] A. D. Ames, S. Coogan, M. Egerstedt, G. Notomista, K. Sreenath, and P.                                  to advance agile quadrotor flight. His research in-
+      Tabuada, “Control barrier functions: Theory and applications,” in Proc.                                 terests include autonomous vision-based quadrotor
+      IEEE 18th Eur. Control Conf., 2019, pp. 3420–3431.                            flight and quadrotor simulations.
+HANOVER et al.: AUTONOMOUS DRONE RACING: A SURVEY                                                                                                                3067
+
+
+
+                         Angel Romero (Graduate Student Member, IEEE)                                         Elia Kaufmann (Member, IEEE) received the B.Sc.
+                         received the B.Sc. degree in electronics engineer-                                   degree in mechanical engineering in 2014, the M.Sc.
+                         ing from the University of Malaga, Málaga, Spain,                                    degree in robotics, systems, and control from ETH
+                         in 2015, and the M.Sc. degree in robotics, systems                                   Zürich, Zürich, Switzerland, in 2017, and the Ph.D.
+                         and control from ETH Zürich, Zürich, Switzerland,                                    degree in informatics from the Institute for Informat-
+                         in 2018. He is currently working toward the Ph.D.                                    ics, University of Zürich, Zürich, in 2022, under the
+                         degree with the Robotics and Perception Group, Uni-                                  supervision of Prof. D. Scaramuzza.
+                         versity of Zürich, Zürich, under the supervision of                                     His doctoral research focused on advancing the ap-
+                         Prof. D. Scaramuzza.                                                                 plication of machine learning techniques to enhance
+                            His research interests include finding new limits in                              perception and control of autonomous aerial vehicles.
+                         the intersection of machine learning, optimal control,                               He is currently a Senior Autonomy Engineer with
+and computer vision applied to super agile autonomous quadrotor flight.                                       Skydio, San Mateo, California, USA.
+
+
+
+
+                          Robert Penicka received the Ph.D. degree in artifi-
+                          cial intelligence from the Czech Technical University
+                          (CTU) in Prague, Prague, Czech Republic, in 2020.                                    Davide Scaramuzza (Senior Member, IEEE) re-
+                             He was a Postdoctoral Researcher with the Uni-                                    ceived the Ph.D. degree in robotics from ETH Zürich,
+                          versity of Zürich between 2020 and 2022 under the                                    Zürich, Switzerland, in 2008.
+                          supervision of Prof. D. Scaramuzza. Since 2022, he                                      He was a Postdoctoral Fellow with the Univer-
+                          has been a Research Fellow with CTU, focusing                                        sity of Pennsylvania, and was a Visiting Profes-
+                          on high-level mission planning, trajectory planning,                                 sor with Stanford University. His research focuses
+                          and control for unmanned aerial vehicles. He is also                                 on autonomous, agile microdrone navigation using
+                          currently a Postdoctoral Fellow with the Multi-Robot                                 standard and event-based cameras. He pioneered au-
+                          Systems (MRS) group, CTU. He bridged the gap                                         tonomous, vision-based navigation of drones, which
+between mission planning and trajectory planning, particularly in cluttered                                    inspired the navigation algorithm of the NASA Mars
+environments.                                                                                                  helicopter and many drone companies. He contributed
+  Dr. Penicka was the recipient of the Dean’s Prize and second place in the        significantly to visual-inertial state estimation, vision-based agile navigation of
+Werner von Siemens Award for Industry 4.0. He was also the recipient of the        microdrones, and low-latency, robust perception with event cameras, which were
+Joseph Fourier Prize and the Antonin Svoboda Award for his doctoral thesis.        transferred to many products, from drones to automobiles, cameras, AR/VR
+                                                                                   headsets, and mobile devices. In 2015, he cofounded Zürich-Eye, today Meta
+                                                                                   Zürich, which developed the world-leading virtual-reality headset Meta Quest.
+                                                                                   In 2020, he cofounded SUIND, which builds autonomous drones for precision
+                                                                                   agriculture. In 2022, his team demonstrated that an artificial intelligence (AI)-
+                                                                                   controlled, vision-based drone could outperform the world champions of drone
+                          Yunlong Song received the M.Sc. degree in infor-
+                                                                                   racing, a result that was published in Nature. Many aspects of his research have
+                          mation and communication engineering from Tech-
+                                                                                   been featured in the media, such as The New York Times, The Economist,
+                          nical University of Darmstadt, Darmstadt, Germany,
+                                                                                   and Forbes. He is a Consultant for the United Nations on disaster response, AI
+                          in 2018. He is currently working toward the Ph.D.
+                                                                                   for good, and disarmament. He is currently also a Professor of robotics and
+                          degree in robotics with the Robotics and Perception
+                                                                                   perception with the University of Zürich, Zürich.
+                          Group, University of Zürich, Zürich, Switzerland,           Dr. Scaramuzza was the recipient of many awards, including an IEEE Tech-
+                          under the supervision of Prof. D. Scaramuzza.
+                                                                                   nical Field Award, the IEEE Robotics and Automation Society Early Career
+                             His research interests include reinforcement learn-
+                                                                                   Award, a European Research Council Consolidator Grant, a Google Research
+                          ing, machine learning, and robotics.
+                                                                                   Award, two NASA TechBrief Awards, and many paper awards.
+
+
+
+
+                          Giovanni Cioffi (Student Member, IEEE) received
+                          the M.Sc. degree in mechanical engineering from
+                          ETH Zürich, Zürich, Switzerland, in 2019. He is
+                          currently working toward the Ph.D. degree in robotics
+                          with the University of Zürich, Zürich, under the su-
+                          pervision of Prof. D. Scaramuzza.
+                             His research interests include the intersection of
+                          computer vision and robotics, exploring topics such
+                          as visual(-inertial) odometry and simultaneous local-
+                          ization and mapping (SLAM).
+                             Dr. Cioffi was the recipient of multiple awards in
+top-tier robotic conferences and journals, such as the IEEE/RSJ International
+Conference on Intelligent Robots and Systems (IROS) 2023 Best Paper Award
+and the RA-L 2021 Best Paper Award.
+

@@ -1,0 +1,542 @@
+                     Aggressive Quadrotor Flight through Narrow Gaps
+                 with Onboard Sensing and Computing using Active Vision
+                       Davide Falanga, Elias Mueggler, Matthias Faessler and Davide Scaramuzza
+
+
+   Abstract— We address one of the main challenges towards
+autonomous quadrotor flight in complex environments, which
+is flight through narrow gaps. While previous works relied on
+off-board localization systems or on accurate prior knowledge
+of the gap position and orientation in the world reference
+frame, we rely solely on onboard sensing and computing and
+estimate the full state by fusing gap detection from a single
+onboard camera with an IMU. This problem is challenging for
+two reasons: (i) the quadrotor pose uncertainty with respect
+to the gap increases quadratically with the distance from the
+gap; (ii) the quadrotor has to actively control its orientation
+towards the gap to enable state estimation (i.e., active vision).
+We solve this problem by generating a trajectory that considers                        (a) The quadrotor passing through the gap.
+geometric, dynamic, and perception constraints: during the
+approach maneuver, the quadrotor always faces the gap to allow
+state estimation, while respecting the vehicle dynamics; during
+the traverse through the gap, the distance of the quadrotor
+to the edges of the gap is maximized. Furthermore, we replan
+the trajectory during its execution to cope with the varying
+uncertainty of the state estimate. We successfully evaluate and
+demonstrate the proposed approach in many real experiments,
+achieving a success rate of 80% and gap orientations up to
+45◦ . To the best of our knowledge, this is the first work that
+addresses and achieves autonomous, aggressive flight through
+narrow gaps using only onboard sensing and computing and
+without prior knowledge of the pose of the gap.
+
+                 S UPPLEMENTARY M ATERIAL
+  The accompanying video is available at:                                                 (b) View from the onboard camera
+http://rpg.ifi.uzh.ch/aggressive_flight.html                              Fig. 1: Sequence of our quadrotor passing through a narrow,
+                                                                          45◦ -inclined gap. Our state estimation fuses gap detection
+                        I. I NTRODUCTION
+                                                                          from a single onboard forward-facing camera with an IMU.
+   Recent works have demonstrated that micro quadrotors                   All planning, sensing, control run fully onboard on a smart-
+are extremely agile and versatile vehicles, able to execute               phone computer.
+very complex maneuvers [1], [2], [3]. These demonstrations
+highlight that one day quadrotors could be used in search
+and rescue applications, such as in the aftermath of an
+earthquake, to navigate through buildings, by entering and                and angular accelerations) in order to align the vehicle to the
+exiting through narrow gaps, and to quickly localize victims.             gap orientation (cf. Fig. 1).
+   In this paper, we address one of the main challenges                      Previous works on aggressive flight through narrow gaps
+towards autonomous quadrotor flight in complex environ-                   have focused solely on the control and planning problem and
+ments, which is flight through narrow gaps. What makes                    therefore relied on accurate state estimation from external
+this problem challenging is that the gap is very small,                   motion-capture systems and/or accurate knowledge of the
+such that precise trajectory-following is required, and can               gap position and orientation in the world reference frame.
+be oriented arbitrarily, such that the quadrotor cannot fly               Since these systems were not gap-aware, the trajectory was
+through it in near-hover conditions. This makes it necessary              generated before execution and never replanned. Therefore,
+to execute an aggressive trajectory (i.e., with high velocity             errors in the measure of the pose of the gap in the world
+                                                                          frame were not taken into account, which may lead to a
+     The authors are with the Robotics and Perception Group, University   collision with gap. Conversely, we are interested in using
+of Zurich, Switzerland—http://rpg.ifi.uzh.ch. This research was           only onboard sensing and computing, without any prior
+funded by the DARPA FLA Program, the National Center of Competence in
+Research (NCCR) Robotics through the Swiss National Science Foundation    knowledge of the gap pose in the world frame. More specif-
+and the SNSF-ERC Starting Grant.                                          ically, we address the case where state estimation is done
+by fusing gap detection through a single, forward-facing         The proposed method was validated in a number of exper-
+camera with an IMU. We show that this raises an interesting      iments, including a rotorcraft passing through an inclined
+active-vision problem (i.e, coupled perception and control).     gap. Like the previous systems, they used a motion-capture
+Indeed, for the robot to localize with respect to the gap, a     system for state estimation.
+trajectory that guarantees that the quadrotor always faces the      In [7], the authors proposed a vision-based method for
+gap must be selected (perception constraint). Additionally,      autonomous flight through narrow gaps by fusing data from
+it must be replanned multiple times during its execution to      a downward and a forward-looking camera, and an IMU.
+cope with the varying uncertainty of the state estimate, which   Trajectory planning was executed on an external computer.
+is quadratic with the distance from the gap. Furthermore,        However, the authors only considered the case of an hori-
+during the traverse, the quadrotor must maximize the distance    zontal gap, therefore no agile maneuver was necessary.
+from the edges of the gap (geometric constraint) to avoid           In [8], the authors proposed methods for onboard vision-
+collisions. At the same time, it must do so without relying      based state estimation, planning, and control for small
+on any visual feedback (when the robot is very close to the      quadrotors, and validated the approach in a number of agile
+gap, it exits from the field of view of the camera). Finally,    maneuvers, among which flying through an inclined gap.
+the trajectory must be feasible with respect to the dynamic      Since state estimation was performed by fusing input from
+constraints of the vehicle.                                      a downward-looking camera and an IMU, rather than from
+   Our proposed trajectory generation approach is indepen-       gap detection, the gap position and orientation in the world
+dent of the gap-detection algorithm being used; thus, to         reference frame had to be measured very accurately prior to
+simplify the perception task, we use a gap with a black-         the execution of the maneuver. The trajectory was generated
+and-white rectangular pattern (cf. Fig. 1) for evaluation and    before execution and never replanned. Therefore, errors in
+demonstration.                                                   the measure of the pose of the gap in the world frame
+                                                                 were not taken into account, which may lead to a collision
+A. Related Work
+                                                                 with gap. To deal with this issue, the authors used a gap
+   A solution for trajectory planning and control for ag-        considerably larger than the vehicle size.
+gressive quadrotor flight was presented in [3]. The authors         All the related works previously mentioned relied on the
+demonstrated their results with aggressive flight through        accurate state estimates from a motion-capture system or
+a narrow gap, and by perching on inclined surfaces. The          accurate prior knowledge of the gap position and orientation
+quadrotor state was obtained using a motion-capture system.      in the world reference frame. Additionally, in all these works
+To fly through a narrow gap, the vehicle started by hovering     but [6] and [8] trajectory generation was performed on an
+in a pre-computed position, flew a straight line towards a       external computer. The advantages of a motion-capture sys-
+launch point, and then controlled its orientation to align       tem over onboard vision are that the state estimate is always
+with the gap. The method was not plug-and-play since it          available, at high frequency, accurate to the millimeter, and
+needed training through iterative learning in order to refine    with almost constant noise covariance within the tracking
+the launch position and velocity. This was due to the instan-    volume. Conversely, a state estimate from onboard vision
+taneous changes in velocity caused by the choice of a straight   can be intermittent (e.g., due to misdetections); furthermore,
+line for the approach trajectory. Unlike their method, we        its covariance increases quadratically with the distance from
+use a technique that computes polynomial trajectories which      the scene and is strongly affected by the type of structure
+are guaranteed to be feasible with respect to the control        and texture of the scene. Therefore, to execute a complex
+inputs. The result is a smooth trajectory, compatible with       aggressive maneuver, like the one tackled in this paper, while
+the quadrotor dynamic constraints, which makes learning          using only onboard sensing and gap-aware state estimation,
+unnecessary. Indeed, in realistic scenarios, such as search-     it becomes necessary to couple perception with the trajec-
+and-rescue missions, we cannot afford training but must pass     tory generation process (i.e., active vision). Specifically, the
+on the first attempt.                                            desired trajectory has to render the gap always visible by the
+   In [4], the same authors introduced a method to compute       onboard camera in order to estimate its relative pose.
+trajectories for a quadrotor solving a Quadratic Program,
+which minimizes the snap (i.e., the fourth derivative of
+                                                                 B. Contributions
+position). In their experiments, agile maneuvers, such as
+passing through a hula-hoop thrown by hand in the air, were         Our method differs from previous works in the following
+demonstrated using state estimation from a motion-capture        aspects: (i) we rely solely on onboard, visual-inertial sensors
+system.                                                          and computing, (ii) we generate a trajectory that facilitates
+   In [5], a technique that lets a quadrotor pass through a      the perception task, while satisfying geometric and dynamic
+narrow gap while carrying a cable-suspended payload was          constraints, and (iii) we do not require iterative learning,
+presented and was experimentally validated using a motion-       neither do we need to know a priori the gap position and
+capture system for state estimation.                             orientation in the world frame. To the best of our knowledge,
+   In [6], the authors proposed an unconstrained nonlinear       this is the first work that addresses and achieves aggressive
+model predictive control algorithm in which trajectory gen-      flight through narrow gaps with state estimation via gap
+eration and tracking are treated as a single, unified problem.   detection from an onboard camera and IMU.
+   The remainder of this paper is organized as follows. Sec-                                Π        Gap
+tion II presents the proposed trajectory-generation algorithm.
+Section III describes the state-estimation pipeline. Section IV                                     e1
+presents the experimental results. Section V discusses the                                          pG          e2
+results and provides additional insights about the approach.
+Finally, Section VI draws the conclusions.                                                                           pf   l
+                                                                                                           gΠ
+                                                                                       p0
+                II. T RAJECTORY P LANNING
+   We split the trajectory planning into two consecutive
+stages. First, we compute a traverse trajectory to pass through
+the gap. This trajectory maximizes the distance from the                                        d
+vehicle to the edges of the gap in order to minimize the
+                                                                           Fig. 3: The traverse trajectory in the plane Π.
+risk of collision. In a second stage, we compute an approach
+trajectory in order to fly the quadrotor from its current
+hovering position to the desired state that is required to
+                                                                    motion in this plane is sufficient. The remaining components
+initiate the traverse trajectory. While both trajectories need to
+                                                                    of g in the plane Π are computed as
+satisfy dynamic constraints, the approach trajectory also sat-
+isfies perception constraints, i.e., it lets the vehicle-mounted                         gΠ = g − hg, e3 i e3 .                  (1)
+camera always face the gap. This is necessary to enable state
+estimation with respect to the gap.                                   Since this is a constant acceleration, the motion of the
+                                                                    vehicle along Π is described by the following second order
+A. Traverse Trajectory                                              polynomial equation:
+   During the gap traversal, the quadrotor has to minimize                                                      1
+the risk of collision. We achieve this by forcing the traverse                   pi (t) = pi (t0 ) + vi (t0 )t + gΠ,i t2 ,      (2a)
+                                                                                                                2
+trajectory to intersect the center of the gap while simulta-                     vi (t) = vi (t0 ) + gΠ,i t,                    (2b)
+neously lying in a plane orthogonal to the gap (see Fig. 2).
+In the following, we derive the traverse trajectory in this         where the subscript i = {1, 2} indicates the component along
+orthogonal plane and then transform it to the 3D space.             the ei axis. The quadrotor enters the traverse trajectory at
+   Let W be our world frame. The vector pG and the rotation         time t0 , t is the current time, and p and v denote its position
+matrix RG denote the position of the geometric center of the        and velocity, respectively.
+gap and its orientation with respect to W , respectively. Let Π        Equation (2) describes a ballistic trajectory. When
+be a plane orthogonal to the gap, passing through its center        gΠ,2 = 0, it is the composition of a uniformly accelerated
+and parallel to the longest side of the gap (cf. Fig. 2). Let e1    and a uniform-velocity motion. In other words, in these cases
+and e2 be the unit vectors spanning such a plane Π, whose           the quadrotor moves on a parabola in space.
+normal unit vector is e3 . The e2 axis is orthogonal to the            Let l and d be the distance between pG and the initial
+gap and e1 = e2 × e3 .                                              point of the trajectory, p0 , along e1 and e2 , respectively (cf.
+                                                                    Fig. 3). These two parameters determine the initial position
+                                                                    and velocity in the plane Π, as well as the time tc necessary
+                 g                                                  to reach pG . The values of d and l are determined through
+                            e1          Π
+                                                                    an optimization problem, as explained later in Sec. II-B.
+                                                                       For a generic orientation RG of the gap, (2) is charac-
+                             pG        e2                           terized by a uniformly accelerated motion along both the
+                            e3    gΠ        pf                      axes e1 and e2 . Therefore, it is not possible to guarantee
+                       p0                                           that the distance traveled along the e2 axis before and after
+                                                 z
+                                                                    the center of the gap are equal while also guaranteeing that
+                                            x        y              the initial and final position have the same coordinate along
+                                                                    the e1 axis. For safety reasons, we prefer to constrain the
+  Fig. 2: An inclined gap and the corresponding plane Π.            motion along the e2 axes, i.e., orthogonally to the gap, such
+                                                                    that the distances traveled before and after the gap are equal.
+   Intuitively, a trajectory that lies in the plane Π and passes       Given the components of the unit vectors e1 and e2 in
+through the center of the gap, minimizes the risk of impact         the world frame, it is now possible to compute the initial
+with the gap.                                                       conditions p0 = p(t0 ) and v0 = v(t0 ) in 3D space as
+   To constrain the motion of the vehicle to the plane Π,           follows:
+it is necessary to compensate the projection of the gravity
+                                                                       p0 = pG − le1 − de2 ,                                    (3a)
+vector g onto its normal vector e3 . Therefore, a constant                                                 
+thrust of magnitude hg, e3 i needs to be applied orthogonally                  l  1               d   1
+                                                                       v0 =      − gΠ,1 tc e1 +      − gΠ,2 tc e2 ,             (3b)
+to Π. By doing this, a 2D description of the quadrotor’s                      tc  2               tc  2
+where:                          s                                  C. Approach Trajectory
+                                    −2l                               Once the traverse trajectory has been computed, its initial
+                         tc =                               (4)
+                                    gΠ,1                           conditions (namely, position, velocity, and acceleration) are
+is the time necessary to reach the center of the gap once the      known. Now we can compute an approach trajectory from
+traverse trajectory starts.                                        a suitable start position to these initial conditions. Note that
+   Note that this solution holds if gΠ,2 ≥ 0 which applies if      this start position is not the current hover position but also
+e2 is horizontal or pointing downwards in world coordinates.       results from the proposed trajectory generation method. Our
+The case gΠ,2 < 0 leads to similar equations, which we omit        goal in this step is to find a trajectory that not only matches
+for brevity. The final three-dimensional trajectory then has       the initial conditions of the traverse trajectory, but also
+the following form:                                                enables robust perception and state estimation with respect
+                                                                   to the gap.
+                                   1                                  Robust state estimation with respect to the gap can only
+                 p(t) = p0 + v0 t + gΠ t2 ,                (5a)
+                                   2                               be achieved by always keeping the gap in the field of view
+                 v(t) = v0 + gΠ t,                         (5b)    of a forward-facing camera onboard the quadrotor. Since it
+                 a(t) = gΠ .                               (5c)    is difficult to incorporate these constraints into the trajectory
+                                                                   generation directly, we first compute trajectory candidates
+    This trajectory is inexpensive to compute since it is solved
+                                                                   and then evaluate their suitability for the given perception
+in closed form. Also, note that during the traverse the gap
+                                                                   task. To do so, we use the approach proposed in [11], where a
+is no longer detectable. Nevertheless, since the traverse
+                                                                   fast method to generate feasible trajectories for flying robots
+trajectory is short and only requires constant control inputs
+                                                                   is presented. In that paper, the authors provide both a closed-
+(a thrust of magnitude hg, e3 i and zero angular velocities),
+                                                                   form solution for motion primitives that minimize the jerk
+it is possible to track it accurately enough to not collide with
+                                                                   and a feasibility check on the collective thrust and angular
+the gap, even without any visual feedback.
+                                                                   velocities. The benefit of using such a method is twofold.
+B. Optimization of the Traverse Trajectory                         First, it allows us to obtain a wide variety of candidate
+   To safely pass through the gap, the quadrotor must reach        trajectories within a very short amount of time by uniformly
+the initial position and velocity of the traverse trajectory       sampling the start position and the execution time within
+described by (3a)-(3b) with an acceleration equal to gΠ at         suitable ranges. This way we can quickly evaluate a large set
+time t0 . An error in these initial conditions is propagated       of candidate trajectories and select the best one according to
+through time according to (5a)-(5c), and therefore may lead        the optimality criterion described in Sec. II-E. Each of these
+to a collision. The only viable way to reduce the risk of          candidate trajectories consists of the quadrotor’s 3D position
+impact is to reduce the time duration of the traverse. More        and its derivatives. Second, and most importantly, since the
+specifically, (4) shows that one can optimize the value of         computation and the verification of each trajectory takes on
+l to reduce the time of flight of the traverse trajectory. On      average a two tenths of millisecond, it is possible to replan
+the other hand, (3b) and (4) show that reducing l leads to         the approach trajectory at each control step, counteracting
+an increase in the norm of the initial velocity v0 . Intuitively   the effects of the uncertainty in the pose estimation of the
+speaking, this is due to the fact that, for a given value of d,    quadrotor when it is far away from the gap. Each new
+if the time of flight decreases, the velocity along the e2 axis    approach trajectory is computed using the last state estimate
+has to increase to let the vehicle cover the same distance         available. In the following, we describe how we plan a yaw-
+in a shorter time. The initial velocity also depends on d,         angle trajectory for each candidate and how we select the
+which can be tuned to reduce the velocity at the start of the      best candidate to be executed.
+traverse. The value of d cannot be chosen arbitrarily small for    D. Yaw-Angle Planning
+two reasons: (i) it is necessary to guarantee a safety margin
+                                                                      In [4], the authors proved that the dynamic model of
+between the quadrotor and the gap at the beginning of the
+                                                                   a quadrotor is differentially flat. Among other things, this
+traverse; (ii) the gap might not be visible during the final
+                                                                   means that the yaw angle of the quadrotor can be controlled
+part of the approach trajectory. For this reason, we compute
+                                                                   independently of the position and its derivatives. In this
+the values of the traverse trajectory parameters solving the
+                                                                   section, we present how to compute the yaw angle such that
+following optimization problem:
+                                                                   a camera mounted on the quadrotor always faces the gap.
+          min tc s.t. kv0 k ≤ v0,max , d ≥ dmin ,           (6)    Ideally, the camera should be oriented such that the center
+           d,l
+                                                                   of the gap is projected as close as possible to the center of
+where v0,max and dmin are the maximum velocity allowed             the image, which yields the maximum robustness for visual
+at the start of the traverse and the minimum value of d,           state estimation with respect to the gap against disturbances
+respectively. We solve the nonlinear optimization problem          on the quadrotor.
+described by (6) with Sequential Quadratic Programming                To compute the desired yaw angle, we first need to
+(SQP [9], using to the NLopt library [10]. Thanks to the           compute the ideal orientation of the camera. Let pG be the
+small dimensionality of the problem, it can be solved on-          coordinates of the center of the gap with respect to the world
+board in few tens of milliseconds.                                 frame W . Furthermore, let RW C and pC be the extrinsic
+parameters of the camera: pC is the camera’s position and           center of the gap as close as possible to the center of the
+the rotation matrix RW C = (r1 , r2 , r3 ) defines the camera       image for the entire trajectory, and at the same time prevents
+orientation with respect to the world frame, where r3 is the        the vehicle from starting too far away from the gap.
+camera’s optical axis.
+                                                                    F. Recovery after the Gap
+   For a given trajectory point, we can compute the vector
+from the camera to the center of the gap d = pG − pC .                 Since we localize the quadrotor with respect to the gap
+Ideally, we can now align the camera’s optical axis r3              in order to traverse it, the quadrotor is left with no state
+with d but since the trajectory constrains the quadrotor’s          estimate after the traversal. Therefore, at this point it has to
+vertical axis zb , we can generally not do this. Therefore,         recover a vision-based state estimate and then hover in a fixed
+we minimize the angle between d and r3 by solving the               position without colliding with the environment. We solve
+following constrained optimization problem:                         this problem using the automatic recovery system detailed
+                                                                    in [12], where the authors provide a method to let a quadrotor
+    r∗3 = arg max hx, di s.t. kxk = 1, hx, zb i = k,         (7)    stabilize automatically after an aggressive maneuver, e.g.
+                x
+
+where the last constraint says that the angle between the           after a manual throw in the air.
+quadrotor’s vertical body axis zb and the camera’s optical                             III. S TATE E STIMATION
+axis is constant and depends on how the camera is mounted
+                                                                    A. State Estimation from Gap Detection
+on the vehicle. For example, k = 0 if the camera is
+orthogonal to the zb axis as it is the case in our setup with          Our proposed trajectory generation approach is indepen-
+a forward-facing camera.                                            dent of the gap-detection algorithm being used; thus, to sim-
+   Letting d⊥zb = d − hd, zb i zb be the component of d             plify the perception task, we use a black-and-white rectangu-
+perpendicular to zb , the solution of (7) is                        lar pattern to detect the gap (cf. Fig. 1). A valid alternative to
+                                                                    cope with real-world gaps would be to use monocular dense-
+                      p          d⊥zb
+                r∗3 = 1 − k 2           + kzb ,           (8)       reconstruction methods, such as REMODE [13]; however,
+                                kd⊥zb k                             they require more computing power (GPUs).
+which is a vector lying in the plane spanned by d and zb ,             We detect the gap in each image from the forward-
+and the minimum angle between the ideal and the desired             facing camera by applying a sequence of steps: first, we
+optical axis is arccos(hr∗3 , di /kdk), i.e.,                       run the Canny edge detector, undistort all edges, and group
+                   p                                               close edges [14]; then, we search for quadrangular shapes
+  θmin = arccos ( 1 − k 2 kd⊥zb k + k hd, zb i) / kdk . (9)         and run geometrical consistency checks. Namely, we search
+Once r∗3 is known, we can compute the yaw angle such that           for a quadrangle that contains another one and check the
+the actual camera optical axis r3 is aligned with r∗3 .             area ratio of these two quadrangles. Finally, we refine the
+   Observe that in the particular case of a trajectory point        locations of the eight corners to sub-pixel accuracy using
+that allows to align r3 with d, we have hd, zb i = kkdk and         line intersection.
+the solution of (7) reduces to r∗3 = kdkd
+                                          , with a minimum             Since the metric size of the gap is known, we estimate the
+angle θmin = arccos(hr3 , di /kdk) = arccos(1) = 0.                 6-DOF pose by solving a Perspective-n-Points (PnP) problem
+                                                                    (where n = 8 in our case). As a verification step, we require
+E. Selection of the Approach Trajectory to Execute                  that the reprojection error is small. We then refine the pose by
+   In the previous sections, we described how we compute            minimizing also the reprojection error of all edge pixels. To
+a set of candidate trajectories in 3D space and yaw for             speed up the computation, we only search the gap in a region
+approaching the gap. All the candidate trajectories differ          of interest around the last detection. Only when no detection
+in their start position and their execution time. From all          is found, the entire image is searched. The detector runs with
+the computed candidates, we select the one that provides            a frequency of more than 30 Hz onboard the quadrotor.
+the most reliable state estimate with respect to the gap.              Finally, we fuse the obtained pose with IMU measure-
+As a quality criterion for this, we define a cost function J        ments to provide a full state estimate using the multi-sensor
+composed of two terms:                                              fusion framework of [15].
+   • the Root Mean Square (RMS) θrms of (9) over every
+                                                                                          IV. E XPERIMENTS
+     sample along a candidate trajectory;
+   • the straight-line distance d0 to the gap at the start of the
+                                                                    A. Experimental Setup
+     approach.                                                         We tested the proposed framework on a custom-made
+More specifically:                                                  quadrotor, assembled from off-the-shelf hardware, 3D
+                                                                    printed parts, and self-designed electronic components (see
+                           θrms    d0                               Fig. 4). The frame of the vehicle is composed of a 3D printed
+                       J=        + ¯,                     (10)
+                             θ̄     d                               center cross and four carbon fiber profiles as arms. Actuation
+where θ̄ and d¯ are normalization constants that make it            is guaranteed by four RCTimer MT2830 motors, controlled
+possible to sum up quantities with different units, and render      by Afro Slim ESC speed controllers. The motors are tilted
+the cost function dimensionless. This way, the quadrotor            by 15◦ to provide three times more yaw-control action, while
+executes the candidate approach trajectory that keeps the           only losing 3 % of the collective thrust.
+Fig. 4: The quadrotor platform used in the experiments. (1)
+Onboard computer. (2) Forward-facing fisheye camera. (3)                  Fig. 5: Our quadrotor during a traverse.
+TeraRanger One distance sensor and (4) downward-facing
+camera, both used solely during the recovery phase. (5) PX4
+autopilot. The motors are tilted by 15◦ to provide three        B. Results
+times more yaw-control action, while only losing 3 % of the        To demonstrate the effectiveness of the proposed method,
+collective thrust.                                              we flew our quadrotor through a gap inclined at different
+                                                                orientations. We consider both rotations around the world x
+                                                                and y axes, and denote them as roll and pitch, respectively.
+                                                                Overall, we ran 35 experiments with the roll angle ranging
+   Our quadrotor is equipped with a PX4FMU autopilot that       between 0◦ and 45◦ and the pitch angle between 0◦ and 30◦ .
+contains an IMU and a micro controller on which our custom      We discuss the choice of these values in Sec. V-C. With the
+low-level controller runs. Trajectory planning, state estima-   gap inclined at 45◦ , the quadrotor reaches speeds of 3 m/s
+tion and high-level control run on an Odroid-XU4 single-        and angular velocities of 400 ◦ /s.
+board computer. Our algorithms have been implemented in            We define an experiment as successful if the quadrotor
+ROS, running on Ubuntu 14.04. Communication between the         passes through the gap without collision and recovers and
+Odroid and the PX4 runs over UART.                              locks to a hover position. We achieved a remarkable success
+   Gap-detection is done through a forward-facing fisheye       rate of 80%. When failure occurred, we found this to be
+camera (MatrixVision mvBlueFOX-MLC200w 752 × 480-               caused by a persistent absence of a pose estimate from the
+pixel monochrome camera with a 180◦ lens), which ensures        gap detector during the approach trajectory. This led to a
+that the gap can be tracked until very close. To allow          large error in matching the initial conditions of the traverse
+the robot to execute the recovery maneuver after traversing     trajectory, which resulted in a collision with the frame of the
+the gap, we mounted the same hardware detailed in [12],         gap.
+which consists of a TeraRanger One distance sensor and a           Figure 6 shows the estimated position, velocity, and orien-
+downward-facing camera. Notice, however, that these are not     tation against ground truth for some of the most significant
+used for state estimation before passing the gap but only to    experiments and for different orientations of the gap (namely:
+recover and switch into stable hovering after the traverse.     20◦ roll, 0◦ pitch; 45◦ roll, 0◦ pitch; and 30◦ roll, 30◦ pitch).
+                                                                Ground truth is recorded from an OptiTrack motion-capture
+   The overall weight of the vehicle is 830 g, while its        system. It can be observed that the desired trajectories were
+dimension are 55 × 12 cm (largest length measured between       tracked remarkably well. Table I reports the statistics of
+propeller tips). The dimensions of the rectangular gap are      the errors when the quadrotor passes through the plane in
+80 × 28 cm. When the vehicle is at the center of the gap,       which the gap lies (i.e., at t = tc ), measured as the distance
+the tolerances along the long side and short sides are only     between actual and desired state. These statistics include
+12.5 cm, and 8 cm, respectively (cf. Fig. 5). This highlights   both the successful and the unsuccessful experiments. The
+that the traverse trajectory must be followed with centimeter   average of the norm of the position error at the center of
+accuracy to avoid a collision.                                  the gap was 0.06 m, with a standard deviation of 0.05 m.
+   The parameters of the traverse trajectory (Sec. II-B) have   The average of the norm of the velocity error was below
+been set as v0,max = 3 m/s, dmin = 0.25 cm. The normal-         0.19 m/s, with a standard deviation of 0.20 m/s. We refer
+                         ¯ introduced in Sec. II-E, have been
+ization constants θ̄ and d,                                     the reader to the attached video for further experiments with
+manually tuned to let the quadrotor start the maneuver close    different orientations of the gap. Figure 7 shows a picture
+enough to render vision-based pose estimation reliable and,     of one of the experiments with the executed approach and
+at the same time, keep the gap as close as possible to the      traverse trajectories marked in color.
+center of the image.
+                                                                                       V. D ISCUSSION
+   The dynamic model and the control algorithm used in this
+work are the same presented in [12]. We refer the reader to        In this section, we discuss our approach and provide more
+that for further details.                                       insights into our experiments.
+                                             (a) Gap: 20◦ roll, 0◦ pitch.                                                                  (b) Gap: 45◦ roll, 0◦ pitch.                                                                         (c) Gap: 30◦ roll, 30◦ pitch.
+
+                                                         Position                                                                                               Position                                                                                       Position
+                                         x                                                                                                     x                                                                                      0.5          x
+ Position [m]
+
+
+
+
+                                                                                                      Position [m]
+
+
+
+
+                                                                                                                                                                                                             Position [m]
+                                         y                                                                                       0             y                                                                                                   y
+                         0               z                                                                                                     z                                                                                                   z
+                                                                                                                                                                                                                                        0
+                                                                                                                            −0.5
+                       −0.5
+                                                                                                                                                                                                                                   −0.5
+                                                                                                                               −1                                                                                                                                                     t0   tc
+                                                                                 t0     tc                                                                                             t0         tc
+                        −1                                                                                                                                                                                                            −1
+                              0                  0.5            1          1.5               2                                       0   0.2       0.4    0.6   0.8   1    1.2   1.4        1.6        1.8                                  0      0.5     1      1.5     2     2.5
+
+                                                          Time [s]                                                                                              Time [s]                                                                                       Time [s]
+                                       (d) Gap: 20◦ roll, 0◦ pitch.                                                                        (e) Gap: 45◦ roll, 0◦ pitch.                                                                          (f) Gap: 30◦ roll, 30◦ pitch.
+
+                                                         Velocity                                                                                               Velocity                                                                                       Velocity
+                        1.5                                                                                                      3
+                                                                                                                                                                                                                                        2
+                                                                                                              Velocity [m/s]
+ Velocity [m/s]
+
+
+
+
+                                                                                                                                                                                                                     Velocity [m/s]
+                                         x                                                                                                     x                                                                                                   x
+                          1              y                                                                                       2             y                                                                                                   y
+                                         z                                                                                                     z                                                                                        1          z
+                        0.5
+                                                                                                                                 1
+                                                                                                                                                                                                                                        0
+                         0
+                                                                                                                                 0
+                       −0.5                                                                                                                                                                                                           −1
+                                                                                 t0     tc                                     −1                                                      t0         tc                                                                                  t0   tc
+                        −1                                                                                                                                                                                                            −2
+                              0                  0.5            1          1.5               2                                       0   0.2       0.4    0.6   0.8   1    1.2   1.4        1.6        1.8                                  0      0.5     1      1.5     2     2.5
+
+                                                          Time [s]                                                                                              Time [s]                                                                                       Time [s]
+                                       (g) Gap: 20◦ roll, 0◦ pitch.                                                                        (h) Gap: 45◦ roll, 0◦ pitch.                                                                          (i) Gap: 30◦ roll, 30◦ pitch.
+
+                                                        Orientation                                                                                         Orientation                                                                                    Orientation
+                                                                                                                                60                                                                                                     40
+                                                                                                        Orientation [deg]
+   Orientation [deg]
+
+
+
+
+                                                                                                                                                                                                               Orientation [deg]
+                         40              roll                                                                                                  roll                                                                                                roll
+                                         pitch                                                                                  40             pitch                                                                                   20          pitch
+                                         yaw                                                                                                   yaw                                                                                                 yaw
+                        20
+                                                                                                                                20                                                                                                      0
+                          0
+                                                                                                                                 0                                                                                                    −20
+                       −20                                                       t0     tc                                                                                             t0         tc
+                                                                                                                                                                                                                                                                                      t0   tc
+                                                                                                                               −20                                                                                                    −40
+                              0                  0.5            1          1.5               2                                       0   0.2       0.4    0.6   0.8   1    1.2   1.4        1.6        1.8                                  0      0.5     1      1.5     2     2.5
+
+                                                          Time [s]                                                                                              Time [s]                                                                                       Time [s]
+                                         (j) Gap: 20◦ roll, 0◦ pitch.                                                                      (k) Gap: 45◦ roll, 0◦ pitch.                                                                          (l) Gap: 30◦ roll, 30◦ pitch.
+
+Fig. 6: Comparison between ground truth and estimated position (top), velocity (center), and orientation (bottom). Each
+column depicts the result of an experiment conducted with a different configuration of the gap: (d), (g) and (j) 20◦ of roll
+and 0◦ of pitch; (e), (h) and (k) 45◦ of roll and 0◦ of pitch; (f), (i) and (l) 30◦ of roll and 30◦ of pitch. The approach
+trajectory starts at t = 0 and ends at t = t0 , when the traverse trajectory is executed. The quadrotor reaches the center of
+the gap at t = tc and starts the recovery maneuver at the final time of each plot. We refer the reader to the accompanying
+video for further experiments with different orientations of the gap.
+
+
+                                       Position [m]                       Velocity [m/s]                                       Orientation [◦ ]                       not, as also highlighted by the authors. This usually happens
+                                   x               y        z         x                y          z                             roll               pitch              when the time duration of the trajectory is short. In such a
+            µ                     0.04           0.04      0.03      0.09             0.15       0.08                          6.04                8.89               case, we skip the replanning and provide the last available
+            σ                     0.03           0.02      0.03      0.08             0.10       0.06                          3.70                5.85
+                                                                                                                                                                      approach trajectory to our controller.
+
+TABLE I: Position, velocity and orientation error statistics                                                                                                          B. Trajectory Computation Times
+at time t = tc . The mean error µ and the standard deviation                                                                                                             The trajectory planning approach we adopt for the ap-
+σ are computed using ground truth data gathered from 35                                                                                                               proach phase is fast enough to compute and test 40, 000
+experiments conducted with the gap at different orientations.                                                                                                         trajectories in less then one second, even with the additional
+                                                                                                                                                                      computational load induced by our check on the gap per-
+                                                                                                                                                                      ception. The computation of each trajectory on the on-board
+A. Replanning                                                                                                                                                         computer takes on average (0.240 ± 0.106) ms, including:
+  The method we use to compute the approach meneu-                                                                                                                    (i) generation of the trajectory; (ii) feasibility check; (iii)
+ver [11] can fail to verify whether a trajectory is feasible or                                                                                                       trajectory sampling and computation of the yaw angle for
+                                                                    sensing and computing. Full state estimation is provided by
+                                                                    fusing gap detections from a forward-facing onboard camera
+                                                                    and an IMU.
+                                                                       To tackle the problems arising from the varying uncer-
+                                                                    tainty from the vision-based state estimation, we coupled
+                                                                    perception and control by computing trajectories that facili-
+                                                                    tate state estimation by always keeping the gap in the image
+                                                                    of the onboard camera.
+                                                                       We successfully evaluated and demonstrated the approach
+                                                                    in many real-world experiments. To the best of our knowl-
+                                                                    edge, this is the first work that addresses and achieves
+Fig. 7: Our quadrotor executing the whole trajectory split          autonomous, aggressive flight through narrow gaps using
+into approach (blue), traverse (red).                               only onboard sensing and computing, and without requiring
+                                                                    prior knowledge of the pose of the gap. We believe that this is
+                                                                    a major step forward autonomous quadrotor flight in complex
+each sample; (iv) evaluation of the cost function described         environments with onboard sensing and computing.
+in (10); (v) comparison with the current best candidate. It is
+important to point out that these values do not apply to the                                     R EFERENCES
+replanning of the approach trajectory during its execution,          [1] M. Müller, S. Lupashin, and R. D’Andrea, “Quadrocopter ball jug-
+since the initial state is constrained by the current state of           gling,” in IEEE/RSJ Int. Conf. Intell. Robot. Syst. (IROS), 2011, pp.
+the vehicle and there is no cost function to evaluate. In such           4972–4978.
+                                                                     [2] M. Cutler and J. How, “Analysis and control of a variable-pitch quadro-
+a case, the computation is much faster and for each trajectory           tor for agile flight,” ASME Journal of Dynamic Systems, Measurement
+it only takes (0.018 ± 0.011) ms on average.                             and Control, vol. 137, no. 10, Oct 2015.
+                                                                     [3] D. Mellinger, N. Michael, and V. Kumar, “Trajectory generation and
+C. Gap configuration                                                     control for precise aggressive maneuvers with quadrotors,” in Int.
+                                                                         Symp. Experimental Robotics (ISER), Dec 2010.
+   Our trajectory generation formulation is able to provide          [4] D. Mellinger and V. Kumar, “Minimum snap trajectory generation and
+feasible trajectories with any configuration of the gap, e.g.,           control for quadrotors,” in IEEE Int. Conf. Robot. Autom. (ICRA), May
+                                                                         2011, pp. 2520–2525.
+when the gap is perfectly vertical (90◦ roll angle) or perfectly     [5] S. Tang and V. Kumar, “Mixed integer quadratic program trajectory
+horizontal (90◦ pitch angle). However, in our experiments we             generation for a quadrotor with a cable-suspended payload,” in IEEE
+limit the roll angle of the gap between 0◦ and 45◦ and the               Int. Conf. Robot. Autom. (ICRA), 2015, pp. 2216–2222.
+                                                                     [6] M. Neunert, C. de Crousaz, F. Furrer, M. Kamel, F. Farshidian,
+pitch angle between 0◦ and 30◦ . We do this for two reasons.             R. Siegwart, and J. Buchli, “Fast nonlinear model predictive control
+First, when the gap is heavily pitched, the quadrotor needs              for unified trajectory optimization and tracking,” in IEEE Int. Conf.
+more space to reach the initial conditions of the traverse               Robot. Autom. (ICRA), 2016.
+                                                                     [7] E. Lyu, Y. Lin, W. Liu, and M. Q. H. Meng, “Vision based autonomous
+from hover. This renders the gap barely or not visible at                gap-flying-through using the micro unmanned aerial vehicle,” in
+the start of the approach, increasing the uncertainty in the             Electrical and Computer Engineering, IEEE Canadian Conference on,
+pose estimation. Second, extreme configurations, such as roll            May 2015, pp. 744–749.
+                                                                     [8] G. Loianno, C. Brunner, G. McGrath, and V. Kumar, “Estimation,
+angles of the gap up to 90◦ , require high angular velocities in         control, and planning for aggressive flight with a small quadrotor with
+order to let the quadrotor align its orientation with that of the        a single camera and IMU,” IEEE Robotics and Automation Letters,
+gap. This makes gap detection difficult, if not impossible, due          vol. 2, no. 2, pp. 404–411, April 2017.
+                                                                     [9] D. Kraft, A Software Package for Sequential Quadratic Programming,
+to motion blur. Also, our current experimental setup does not            ser. Deutsche Forschungs- und Versuchsanstalt für Luft- und Raum-
+allow us to apply the torques necessary to reach high angular            fahrt Köln: Forschungsbericht. Wiss. Berichtswesen d. DFVLR, 1988.
+velocities because of the inertia of the platform and motor         [10] S. G. Johnson, “The NLopt nonlinear-optimization package.” [Online].
+                                                                         Available: http://ab-initio.mit.edu/nlopt
+saturations.                                                        [11] M. W. Mueller, M. Hehn, and R. D’Andrea, “A computationally
+                                                                         efficient motion primitive for quadrocopter trajectory generation,”
+D. Dealing with Missing Gap Detections                                   IEEE Trans. Robot., vol. 31, no. 6, pp. 1294–1310, 2015.
+   The algorithm proposed in Sec. III-A fuses the poses from        [12] M. Faessler, F. Fontana, C. Forster, and D. Scaramuzza, “Automatic
+                                                                         re-initialization and failure recovery for aggressive flight with a
+gap detection with IMU readings to provide the full state                monocular vision-based quadrotor,” in IEEE Int. Conf. Robot. Autom.
+estimate during the approach maneuver. In case of motion                 (ICRA), 2015, pp. 1722–1729.
+blur, due to high angular velocities, or when the vehicle is        [13] M. Pizzoli, C. Forster, and D. Scaramuzza, “REMODE: Probabilistic,
+                                                                         monocular dense reconstruction in real time,” in IEEE Int. Conf. Robot.
+too close to the gap, the gap detection algorithm does not               Autom. (ICRA), 2014, pp. 2609–2616.
+return any pose estimate. However, these situations do not          [14] S. Suzuki and K. Abe, “Topological structural analysis of digitized
+represent an issue during short periods of time (a few tenths            binary images by border following,” Computer Vision, Graphics, and
+                                                                         Image Processing, vol. 30, no. 1, pp. 32–46, 1985.
+of a second). In these cases, the state estimate from the sensor    [15] S. Lynen, M. Achtelik, S. Weiss, M. Chli, and R. Siegwart, “A
+fusion module is still available and reliable through the IMU.           robust and modular multi-sensor fusion approach applied to MAV
+                                                                         navigation,” in IEEE/RSJ Int. Conf. Intell. Robot. Syst. (IROS), 2013.
+                      VI. C ONCLUSION
+  We developed a system that lets a quadrotor vehicle safely
+pass through a narrow inclined gap using only onboard
+

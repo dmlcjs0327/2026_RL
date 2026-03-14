@@ -1,0 +1,698 @@
+                            Proceedings of the Thirty-First International Joint Conference on Artificial Intelligence (IJCAI-22)
+                                                                       Survey Track
+
+
+
+
+             Goal-Conditioned Reinforcement Learning: Problems and Solutions
+
+                                   Minghuan Liu∗ , Menghui Zhu∗ , Weinan Zhang†
+                                           Shanghai Jiao Tong University
+                                     {minghuanliu,zerozmi7,wnzhang}@sjtu.edu.cn
+
+
+
+                            Abstract                                             The reward function is known and usually defined as a binary
+                                                                                 bonus of reaching the goal. After training, the agent should
+        Goal-conditioned reinforcement learning (GCRL),                          be able to achieve arbitrary goals as the task specifies. Such
+        related to a set of complex RL problems, trains                          a problem raises additional challenges, for example, the sim-
+        an agent to achieve different goals under particu-                       ple but sparse reward function and the sample efficiency for
+        lar scenarios. Compared to the standard RL solu-                         multi-task learning.
+        tions that learn a policy solely depending on the                           From the task perspective, various solutions are designed
+        states or observations, GCRL additionally requires                       for different categories of goals. A typical goal space is a
+        the agent to make decisions according to different                       sub-space of the state space, such as images or feature vec-
+        goals. In this survey, we provide a comprehen-                           tors, which is natural for describing the desired condition that
+        sive overview of the challenges and algorithms for                       the agents are required to meet. In addition, language, re-
+        GCRL. Firstly, we reveal the basic problems stud-                        wards, commands and intrinsic skills are also used as the rep-
+        ied in this field. Then, we explain how goals are                        resentation of goals for different kinds of tasks.
+        represented and present how existing solutions are
+                                                                                    From the learning perspective, researchers have proposed
+        designed from different points of view. Finally, we
+                                                                                 bags of tricks to alleviate the challenges in learning effi-
+        conclude and discuss potential future prospects that
+                                                                                 ciency and generalization ability. Specifically, during a train-
+        recent researches focus on.1
+                                                                                 ing loop, the agent first receives a desired goal from the en-
+                                                                                 vironment or it should choose its own goal that is easier to
+1       Introduction                                                             achieve at the current stage [Ren et al., 2019; Florensa et al.,
+                                                                                 2018]. Then to pursue the goal, the agent interacts with the
+One of the remarkable behaviors of human intelligence is                         environment to generate trajectories [Trott et al., 2019]. The
+that humans learn to reach one-by-one goals. Such ability                        sampled trajectories are further post-processed for the train-
+allows generalizing their skills across different tasks while                    ing, for example, Andrychowicz et al. [2017] chose to relabel
+learning effectively. Building upon the recent successes of                      the goals to increase the effectiveness of the samples. The fi-
+deep reinforcement learning (RL), which aims to induce a                         nal step in the loop is the optimization of the policy and value
+unique optimal solution for a specific task [Sutton and Barto,                   networks, where the goal-augmented extensions of the state
+2018], researchers extend the problem towards tackling mul-                      and state-action value function are proposed as the foundation
+tiple goals simultaneously [Plappert et al., 2018], known as                     for solving the goal-conditioned policy [Schaul et al., 2015].
+goal-conditioned RL, or goal-oriented RL, multi-goal RL,                            This survey focuses on the algorithms designed for GCRL
+and we will refer as GCRL in this paper for brevity. Tech-                       and is organized as follows:
+nically, goal is a core data structure widely used in many re-
+lated domains, for describing either achieving or maintaining                      1. Background and basic challenges. We firstly formu-
+some condition, e.g., goal reasoning [Roberts et al., 2018;                            late the basic problem in GCRL, and list all the chal-
+Niemueller et al., 2019] and robotics [Rolf and Steil, 2013;                           lenges that should be addressed (Section 2);
+Santucci et al., 2016]. In this paper, we mainly focus on the                      2. Goals representations. We discuss how the goals are
+usage of goals in RL literature. Different from standard RL,                           defined and represented in different task specifications
+GCRL augments the observation with an additional goal that                             (Section 3);
+the agent is required to achieve when making a decision in                         3. Solutions towards learning phases. We categorize
+an episode [Schaul et al., 2015; Andrychowicz et al., 2017].                           existing researches from the perspective of different
+    ∗                                                                                  phases, explain how the challenges of GCRL are tack-
+     Equal contribution.
+    †                                                                                  led from different points of views (Section 4);
+     Corresponding author.
+   1
+     We collect and summarize related algorithms and widely                        4. Future prospects. We summarize and present future
+used benchmark environments in https://github.com/apexrl/                              prospects that are potential and expected to be studied
+GCRL-Collection.                                                                       in this field (Section 5).
+
+
+
+                                                                          5502
+                                      Proceedings of the Thirty-First International Joint Conference on Artificial Intelligence (IJCAI-22)
+                                                                                 Survey Track
+
+
+2     Problems and Challenges                                                                 Definition 1 (Desired Goal). A desired goal is a required task
+2.1     Standard RL Problems as MDPs                                                          to solve which can either be provided by the environments or
+                                                                                              generated intrinsically.
+Standard RL tasks are usually modeled as Markov Decision
+Process (MDP) M, denoted as a tuple hS, A, T , r, γ, ρ0 i,                                    Definition 2 (Achieved Goal). An achieved goal is the corre-
+where S, A, γ and ρ0 denote the state space, action space, dis-                               sponding goal achieved by the agent at the current state.
+count factor and the distribution of initial states, respectively.                            Definition 3 (Behavioral Goal). A behavioral goal represents
+T : S × A × S → [0, 1] is the dynamics transition function,                                   the targeted task for sampling in a rollout episode.
+and r : S × A → R is the reward function. Formally, the
+problem requires the agent to learn a decision-making policy                                     We note that the behavioral goal should be equivalent to
+π : S → A to maximize the expected cumulative return:                                         the desired goal if there is no sub-goal replacement.
+                                  "                     #
+                                    X                                                         2.3    Basic Challenges
+        J(π) = E at ∼π(·|st )            γ t r(st , at ) .     (1)
+                             st+1 ∼T (·|st ,at )                                              The mission of the agent as mentioned in Fig. 1 can be sum-
+                                                    t
+                                                                                              marized as learning a multifunctional policy. In the sequel,
+2.2     Goal-Augmented MDPs                                                                   the basic challenges are mainly the problem of generalization
+Standard RL only requires the agent to finish one specific                                    and sample efficiency.
+task defined by the reward function while GCRL focuses on a
+                                                                                              Generalization: Learning over Multiple Tasks
+more general and complex scenario. As depicted in Fig. 1, the
+agent in GCRL is required to either learn to master multiple                                  In multi-task learning problems, denoting the loss function of
+tasks simultaneously, or decompose the long-term and hard-                                    the task i as Li , the weighted objective for learning k tasks
+reaching goals into intermediate sub-goals while learning to                                  with a function f simultaneously is defined as
+reach them with a unified policy, or achieve both of them.                                                                    k
+                                                                                                                              X
+For example, to navigate a robot or manipulate an object, the                                                      L(f ) =          wi · Li (f ) .         (3)
+goals are typically defined as the target positions to reach. In                                                              i=1
+Section 3, we will further discuss the detailed representation
+of goals case-by-case.                                                                        This requires generalization and feature sharing across tasks
+                                                                                              that boost the learning efficiency of the function. If we further
+                                                                                              regard the weight wi for each task i as the occurring proba-
+                                                                                              bility such that i ∼ p and p(i) = wi , we can further rewrite
+    a) M ulti-task Policy
+                                                                                              Eq. (3) as an objective of expectation:
+                                                                     I nitial States
+                                                                                                                      L(f ) = Ep [Li (f )] .               (4)
+                                                                     Goal States
+
+                                                                       Subgoals               Notice that this generalizes the objective Eq. (2) of GCRL.
+    b) Policy for Task
+      Decomposition
+                                                                                              Correspondingly, the task variety p is exactly the desired goal
+                                                                                              distribution pg ; and different goals g ∼ pg implies differ-
+                                                                                              ent reward functions under the same environment. Since the
+Figure 1: The mission of policy in complex RL problems. a) Learn                              agent is required to learn a unified policy to perform under
+to achieve multiple tasks with one single policy; b) Decompose the                            multiple goals simultaneously, one of the main challenges in
+long-term, hard-reaching goals into easily obtained sub-goals.
+                                                                                              a complex RL problem can be naturally regarded as a multi-
+                                                                                              task learning problem towards generalization.
+   To tackle such a challenge, the formulation of GCRL aug-                                      Fortunately, different goals in the same environment al-
+ments the MDP with an extra tuple hG, pg , φi as a goal-                                      ways possess similar properties (e.g., the dimension, the
+augmented MDP (GA-MDP), where G denotes the space of                                          structure, and even the way to compute rewards are the same).
+goals describing the tasks, pg represents the desired goal dis-                               This makes it possible for the goal-conditioned policy to
+tribution of the environment, and φ : S → G is a tractable                                    share parameters across various tasks (i.e., goals g) to derive
+mapping function that maps the state to a specific goal. For                                  a generalized solution in GCRL.
+many scenarios, S and G can be the same, in which case
+φ is an identity function. In GA-MDP, the reward function                                     Sample Efficiency: Towards Sparse Rewards
+r : S × A × G → R is defined with the goals, and there-                                       In GA-MDP, the reward function r is typically a simple un-
+fore the objective of GCRL is to reach goal states via a goal-                                shaped binary signal, indicating whether the task is com-
+conditioned policy π : S × G × A → [0, 1] that maximizes                                      pleted, i.e.,
+the expectation of the cumulative return over the goal distri-
+bution:                                                                                                   rg (st , at , g) = 1(the goal is reached) ,      (5)
+                                   "                     #
+                                     X                                                        where 1 is the indicator function. The principle for complet-
+       J(π) = Eat ∼π(·|st ,g),g∼pg     γ t r(st , at , g) . (2)
+                            st+1 ∼T (·|st ,at )
+                                                                                              ing the goal is usually a known criteria, for example, the dis-
+                                                    t
+                                                                                              tance between the achieved goal and the desired goal is less
+To better understand the agent behaviors in a GA-MDP, some                                    than a small number  [Andrychowicz et al., 2017]:
+common definitions of goal used in previous works [Pitis et
+al., 2020; Zhu et al., 2021], are listed below.                                                     1(the goal is reached) = 1(kφ(st+1 ) − gk ≤ ) .       (6)
+
+
+
+                                                                                       5503
+                                    Proceedings of the Thirty-First International Joint Conference on Artificial Intelligence (IJCAI-22)
+                                                                               Survey Track
+
+
+Therefore, without shaping, the reward is rather sparse, so                              is exactly matching a target state, or a dimension reduction
+the agent can gain nothing from unsuccessful episodes. A                                 function that choosing specific dimensions from the state.
+straightforward idea to prevent the problem is to reshape the
+reward with a distance measure d between the achieved goal                               3.2     Image Goals
+and the desired goal without any domain knowledge [Trott et                              Comparing to vectors describing simple properties and fea-
+al., 2019], i.e.,                                                                        tures, image is a more straightforward representation for com-
+                                                                                         plex tasks, especially in practical applications. Researchers
+                    r̃g (st , at , g) = −d(φ(st+1 ), g) .                      (7)
+                                                                                         used to evaluate their image algorithms on simulation envi-
+Such reshaped signals are so dense that the sparse problem                               ronments, as in Warde-Farley et al.; Lee et al.; Chane-Sane et
+can be alleviated in many cases. However, it may cause addi-                             al. [2019; 2020; 2021], and also in real-world robotics appli-
+tional local optima challenges due to the structure of the envi-                         cations [Nair et al., 2018b; Nair et al., 2020b].
+ronment. For instance, the reshaped reward prevents learning                                Simulation environments include the robotics benchmark-
+from a behavior that the agent must first increase the distance                          ing tasks discussed in Section 3.1 with image state / goal
+to the goal before finally reaching it [Trott et al., 2019].                             space instead; moreover, DeepMind Lab [Beattie et al.,
+                                                                                         2016], Deepmind Control Suite (DMC) [Tassa et al., 2020],
+3     What are Goals?                                                                    Atari games [Brockman et al., 2016] and Minecraft [John-
+                                                                                         son et al., 2016] are also popular testbeds. In these tasks,
+In this section, we characterize the basic element in GCRL –                             the goal is either the image of the target position to ap-
+what exactly the goals are, and their typical representations.                           proach, or a imagined image of winning the game. Beyond
+Indeed, there is no unique answer for the structure of goals,                            simulation, researchers also bring GCRL into real-world ap-
+which highly depends on the task specifications. For research                            plications. For instance, Nair et al.; Nair et al. [2018b;
+convenience, we further summarize the widely-used bench-                                 2020b] first simulated a 7-dof Sawyer arm to reach goal posi-
+mark environments from previous works in Tab. 1.                                         tions, and then applied the agent to real world robotics control
+                                                                                         tasks with camera images.
+                                                                                            To solve image tasks, the state and goal images can be
+                                                                                         directly fed into the policy and value networks and trained
+            ...               ...                                                        in an end-to-end manner, as in Chane-Sane et al.; Eysen-
+      Coordinate:
+                                                                                         bach et al.; Trott et al. [2021; 2019b; 2019]. However,
+                           " Get to the red
+                                flag"
+                                                                                         due to the high dimensionality of images, a more general
+                                                                                         way is to work on a compact vector representation, using
+                                                                                         an encoding model E to map the image observation o to
+                                                                                         a latent goal gz = E(o). A common choice of the en-
+Figure 2: Typical representations of goals in GCRL: vectors, images                      coder is variational auto-encoder (VAE) [Nair et al., 2018b;
+and languages.                                                                           Khazatsky et al., 2021]; or a context-conditioned VAE [Nair
+                                                                                         et al., 2020a] for generalizing to different environments. The
+                                                                                         encoding can also be derived via training a weak supervised
+3.1     Desired Property and Feature Vectors                                             model for learning disentangled representation [Lee et al.,
+Typically, goals are defined as desired properties or fea-                               2020]; and even an end-to-end supervised imitation learning
+tures of an agent. A task is therefore asking the agent to                               objective [Srinivas et al., 2018]. In such tasks, the goal map-
+achieve some states that suffices specific features, usually rep-                        ping function is an identical function since the state and goal
+resented as vectors. A wide variety of simulated robotics con-                           are in the same image space.
+trol tasks [Plappert et al., 2018] are commonly used bench-
+marks for evaluating vector GCRL algorithms. For instance,                               3.3     Language Goals
+asking the robotic arm to push, pick, or slide a block to                                Natural languages are also used to represent the goals. In
+a specific location, like FetchPush, FetchPickAndPlace and                               fact, language-conditioned RL is a wide research direction,
+FetchSlide. Additionally, a robotic hand is required to ma-                              which combines the techniques of GCRL and the develop-
+nipulate the block, or the pen to a particular position and                              ment of neural language processing (NLP). Since our work
+rotation, e.g., HandManipulateBlock and HandManipulate-                                  focus on the essential of GCRL, we will only cover how lan-
+Pen. In such cases, the representation of the goal is a set                              guage forms the goals, and readers may refer to Luketina et
+of vectors of the desired location. On the other hand, set-                              al. [2019] for a detailed review of language usage in RL.
+ting the goal as a desired moving speed and ask the chee-                                   The advantage of language goals, i.e., sequences of dis-
+tah agent to run up at the speed (HalfCheetah) [Zhu et al.,                              crete symbols, is that they can easily be understood by hu-
+2021]; or a vector of the target position to reach, as is used                           man. In most cases, the goal is an instruction sentence con-
+in AntLocomotion [Florensa et al., 2018], Reacher [Tang                                  taining explicit verbs and objects, for instance, “go to blue
+and Kucukelbir, 2021], and N-D Mass [Fang et al., 2019;                                  torch” [Chan et al., 2019]; or question words “there is a red
+Pitis et al., 2020].                                                                     ball; are there any matte cyan sphere right of it?” [Jiang et al.,
+   For tasks with vector goals, the goal space is usually a sub-                         2019]; and simply, a predefined set of semantic predicates,
+space of the state space. In other words, the mapping function                           like “close”, “above” [Akakzia et al., 2021]. To train RL al-
+φ is either an identical function such that matching a goal                              gorithms, those words must be either translated into embed-
+
+
+
+                                                                                  5504
+                          Proceedings of the Thirty-First International Joint Conference on Artificial Intelligence (IJCAI-22)
+                                                                     Survey Track
+
+
+
+  Environment / Task               Benchmark Type                   Description
+  FetchReach                       Gym Robotics/Mujoco              A robotic arm reaches a target position
+  FetchPush                        Gym Robotics/Mujoco              A robotic arm pushes a block to a target position
+  FetchPickAndPlace                Gym Robotics/Mujoco              A robotic arm first picks up the block then places it to a target position
+  FetchSlide                       Gym Robotics/Mujoco              A robotic arm slides a buck to a goal position
+  HandManipulateBlock              Gym Robotics/Mujoco              Orient a block using a robot hand
+  HandManipulateEgg                Gym Robotics/Mujoco              Orient an egg using a robot hand
+  HandManipulatePen                Gym Robotics/Mujoco              Orient a pen using a robot hand
+  HalfCheetah                      Mujoco                           Make a 2D cheetah robot run and keep a specific speed
+  AntLocomotion / AntMaze          Mujoco                           Make a 3D four-legged robot walk to a target position
+  Sawyer                           Mujoco                           A sawyer robot reaches a target position
+  Reacher                          Mujoco                           A reacher robot reaches a target position
+  N-D Mass                         Mujoco                           A ball reaches a target position
+  DoorOpening                      Mujoco                           A sawyer robot opens a door by latching onto the handle
+  Dy-Reaching                      Mujoco                           A robotic arm reaches a target position moving along a straight line
+  Dy-Circling                      Mujoco                           A robotic arm reaches a target position moving along a circle
+  Dy-Pushing                       Mujoco                           A robotic arm moves the box to a moving target position
+  Dy-Pouring                       Mujoco                           A robotic arm grips the can and pours the water into a cup
+  WaterMaze                        DeepMind Lab                     Get to a target position described by an image
+  Seaquest                         Atari                            Get to a target position described by an image
+  Montezuma’s Revenge              Atari                            Get to a target position described by an image
+  Reacher                          DeepMind Control Suit            A two-link planar reacher poses an aimed shape
+  Manipulator                      DeepMind Control Suit            A 3-DoF finger robot rotates the body into a target orientation
+  Finger                           DeepMind Control Suit            A planar manipulator brings an object in a target location
+  Place Object in Tray             PyBullet                         A robotic arm puts toys into a tray
+  Opening Drawer                   PyBullet                         A robotic arm opens the drawer
+  PickandPlace                     PyBullet                         A robotic arm first picks up the block then places it to a target position
+  Five Object Manipulation         CLEVR-Robot/Mujoco               A point mass agent arranges, orders and sorts 5 fixed objects
+  Diverse Object Manipulation      CLEVR-Robot/Mujoco               A point mass agent orders objects in different shapes and colors
+  Playground                       Playground                       A 2D hand moves and grasps/releases different objects
+  VizDoom                          ViZDoom                          AI bots reach specific place in the first person shooter 3D game Doom
+
+Table 1: Summary of widely used benchmark environments. Note almost all environments support various kinds of goal structures, i.e.,
+vector, image, language, etc. More detailed information can be referred to the repository we maintained.
+
+
+dings via pre-training models [Chan et al., 2019], or taken                    cision transformer (DT) to solve offline RL problems, which
+into a recurrent neural network (RNN) as learning the em-                      treats RL as a sequence modeling problem by generating ac-
+bedding jointly with the RL agent [Colas et al., 2020a]. If                    tions from offline datasets. In detail, the trajectories are rep-
+the language space is constrained such that the discrete predi-                resented as a sequence of (R    b1 , s1 , a1 , ..., R
+                                                                                                                                   bT , sT , aT ), where
+cates or objects are limited, a simple semantic mapping func-                  Rbt =  P  T
+                                                                                         t0 =t rt0 is the target reward that requires the agent to
+tion can be learned to translate the handcrafted encodings into                reach, and resembles the desired goal in GCRL.
+vectors [Akakzia et al., 2021]. In this case, the goal mapping
+is a function from the state space to the embedding space.                     Upside-down RL: commands as goals. Concurrently,
+                                                                               Schmidhuber [2019] and Srivastava et al. [2019] also ex-
+3.4   Other Forms of Goals                                                     ploited reward-form goals on standard RL problems. Differ-
+Not limited in forms above, researchers have used the condi-                   ent from the works discussed above, they regard the goals
+tioned policy on various goal types, which may lead to differ-                 as a set of commands, such as asking the agent to reach a
+ent unresolved problems.                                                       desired return R in a desired horizon H, leading to a condi-
+                                                                               tioned policy π(a|s, R, H). These works do not adopt any
+Expected return as goals. Kumar et al. [2019] proposed                         training techniques from RL literature, but learn the policy
+to learn a return-conditioned policy π(a|s, R) where R is an                   from replay buffer in a supervised style instead.
+estimated return of the whole trajectory. The basic idea is
+to reuse sub-optimal trajectories for training as these trajec-
+tories are optimal supervision for a policy of certain quality,
+                                                                               4     Algorithms to GCRL
+and thus the return R can be seen as a desired goal to reach.                  In this section, we discuss the solutions for GCRL tasks from
+Specifically, R is modeled as a dynamic distribution as the                    the major perspectives of algorithms, including optimization,
+learning proceeds. Recently, Chen et al. [2021] proposed de-                   sub-goal selection and relabeling, as shown in Fig. 3, which
+
+
+
+                                                                        5505
+                            Proceedings of the Thirty-First International Joint Conference on Artificial Intelligence (IJCAI-22)
+                                                                       Survey Track
+
+
+
+
+                                                                                                                             Q/Value        Policy
+                                                                                                                             Networ k      Networ k
+
+
+
+
+            Goal Selection                      Rollout in                                                                         Optimization
+                                                                                         Relabel
+                                              Environments
+
+Figure 3: Typical phases in a GCRL algorithm. The agent is provided (or selects by itself) a behavior goal as the target, then interacts with
+the environments and collects experiences. Before optimizing the policy, the historical data can be relabeled by changing the desired goals.
+
+
+is also summarized in Tab. 2.                                                    Self-imitation learning. Although reaching a specific goal
+                                                                                 state is agnostic to the agent at the beginning of training,
+4.1   Optimization                                                               we can treat any trajectory as a successful trial for reach-
+The essential difference between GCRL and traditional RL                         ing its final state. Drawn intuition from such an observation,
+algorithms on the stage of optimization is learning a condi-                     Ghosh et al. [2021] proposed a supervised algorithm named
+tioned policy towards a set of goals. Therefore, both universal                  goal-conditioned supervised learning (GCSL), which learns
+and specific solutions are proposed for resolving GCRL.                          the policy by maximizing the likelihood of the actions for a
+Universal value function. To solve GCRL, Schaul et al.                           reached goal within a number of steps:
+[2015] first proposed the universal value function approxima-                                        J(π) = ED [log π(a|s, g, h)] ,                    (9)
+tion (UVFA), which provides a straightforward way to char-
+acterize Goal-Augmented MDP (GA-MDP) by generalizing                             where D is the replay buffer and h represents the left steps
+the standard value function as a goal-conditioned value func-                    (horizon) to reach the goal. Similar to the idea of GCSL,
+tion, and is defined as                                                          Nair et al. [2018a] filtered the actions from demonstrations
+                                      hX                   i                     by Q values and added a supervised auxiliary loss on the RL
+    V π (st , g) = E at ∼π(·|st ,at )    γ t r(st , at , g) . (8)                objective to improve the learning efficiency.
+                    st+1 ∼T (·|st ,at )   t
+                                                                                 Planning and model-based RL. In RL tasks, agents must
+UVFA is widely applied in the following research works serv-                     interact with the environment to collect experience for policy
+ing as a basic framework.                                                        learning, which results in considerable sampling costs. How-
+Reward shaping. One of the basic challenges of GCRL                              ever, as humans have the ability to infer future outcomes in
+is the extremely sparse reward, so a corresponding solution                      mind, agents can also keep an environment dynamics model
+should be reward shaping. In the previous context, we have                       for planning or imagining with less sampling in the environ-
+explained that a lazy distance-based shaping method can lead                     ment. Formally, the probabilistic parameterized dynamics
+to additional local optima. To alleviate the problem, Trott                      model Mθ can be trained from experience data D by super-
+et al. [2019] proposed a sibling rivalry (SR) mechanism,                         vised objectives, e.g., by maximum likelihood estimation:
+which samples two sibling rollouts simultaneously, uses each
+others’ achieved goals as anti-goals ḡ and reward an anti-                          arg max E{st ,at ,st+1 }∼D [log P r(st+1 |st , at ; θ)] .        (10)
+                                                                                          θ
+goal bonus d(s, ḡ) to improve exploring, where d is the dis-
+tance metric, such as L2-norm. In addition, many works pro-                      Generally speaking, algorithms utilizing a dynamics model
+posed different distance measures for evaluating the progress                    are realized as model-based methods. The typical usage of
+of achieving goals. For instance, Hartikainen et al. [2019]                      the model contains planning and generating more interaction
+calculated the average number of actions required to taken to                    data for training to improve the sample efficiency. For ex-
+reach the goal and used it as the penalty on reward; Wu et                       ample, Nair et al. [2020b] tried to plan to reach the goal
+al. [2018] learned the Laplacian matrix then used its eigen-                     states in the latent space for image-based inputs; they trained
+vectors as the representation of the states and goals, and the                   an encoder-decoder model and a goal-conditioned dynamics
+reward function is defined as the Euclidean distance between                     model on the latent space to learn the state representation
+the state and goal vectors; Durugkar et al. [2021] defined the                   function. Charlesworth and Montana [2020] utilized a dy-
+target distribution in GCRL as a Dirac measure at the goal                       namics model for predicting consecutive states to regularize
+state and estimated Wasserstein-1 distance of the state visita-                  the consistency of the trajectories generated by a GAN model.
+tion distribution to the target distribution as the reward bonus.                With an ensemble of well-trained GANs, the agent generate
+In order to encourage exploration, McCarthy and Redmond                          trajectories and choose the next actions from the trajectory
+[2021] trained an ensemble of forward models and adopted                         that spends less time achieving the goal. Besides, to decrease
+the variance between the ensemble predictions of the next                        the sampling cost, Zhu et al. [2021] brought model-based op-
+state as the intrinsic reward.                                                   timization techniques into GCRL while also planning in the
+
+
+
+                                                                          5506
+                             Proceedings of the Thirty-First International Joint Conference on Artificial Intelligence (IJCAI-22)
+                                                                        Survey Track
+
+
+learned model to infer future goals for relabeling; Zhang et al.                  enhance the coverage of the goal space; Pong et al. [2020]
+[2021] learned a representation model from the goal space to                      trained a self-supervised generative model to generate be-
+a compact latent space in a self-supervised manner, and tried                     havioral goals that are skewed to be approximately uniform
+to find a sparse set of latent landmarks scattered across goal                    over achieved goals from past experience, which is shown
+space in terms of reachability by clustering and planning with                    as equivalent to maximizing the entropy of the desired goal
+the landmarks; Mendonca et al. [2021] took an ensemble of                         distribution. Likewise, to provide with reachable and diverse
+dynamics model for training an explorer to discover unseen                        goals, Warde-Farley et al. [2019] and Nair et al. [2018b]
+surprising states by defining exploration bonus as the variance                   both chose to sample past achieved goals uniformly from ex-
+of the ensemble predictions, and they further train the policy                    perience replay as the behavioral goals, while Warde-Farley
+to reach randomly sampled goals from the replay buffer.                           et al. [2019] sampled goals from a diversified replay buffer
+                                                                                  in which the distance between the stored goals are held as far
+4.2   Sub-goal Selection / Generation                                             as possible, and Nair et al. [2018b] generate goals by fitting a
+In most environments, the desired goal asked by the task for                      generative model for historical achieved goals. Furthermore,
+the agent is a long-term target and hard to achieve. Neverthe-                    Ren et al. [2019] generated a set of hindsight goals for explo-
+less, building on the insight that humans tend to split the long-                 ration by formulating a Wasserstein Barycenter problem. The
+term target into the short-term goals that are easier to reach,                   generated sub-goals serve as an implicit curriculum that is ef-
+researchers have proposed to generate or select sub-goals to                      fective to learn using the current value function. Hartikainen
+help the agent reach the target goals. Formally, collecting                       et al. [2019] chose to learn a distance function and take the
+experience following a replaced desired goal is changing the                      goals from the replay buffer which have maximum distance
+goal distribution of the environment from pg into f , and the                     from the initial state for exploration efficiency.
+optimization in Eq. (2) is now rewritten as
+                                 "                    #                           Searching from experience. Looking back upon past ex-
+                                                                                  perience, both humans and agents can benefit since the his-
+                                   X
+                                       t
+     J(π) = Eat ∼π(·|st ,g),g∼f       γ r(st , at , g) ,     (11)
+                st+1 ∼T (·|st ,at )    t
+                                                                                  tory contains the way-points leading us to reach some goals.
+                                                                                  Motivated by such an idea, Lai et al. [2020] chose k critical
+where f can either be specific rules that select g from past                      middle point goals from a sampled episode, and learned an
+experience, or a learned function depending on the principle.                     RNN to generate the sequence given the starting and the ulti-
+Intermediate difficulty. Accurately evaluating the diffi-                         mate point; thereafter, they apply the generated middle points
+culty to reach a goal helps determine what to learn within                        as a sequence of desired goals when interacting with the envi-
+the capability of the agent. An appropriate goal should be                        ronment. On the other hand, Eysenbach et al. [2019b] built a
+just beyond the scope of the agent in order to improve learn-                     graph on the replay buffer, taking the states as nodes, and dis-
+ing efficiency. Accordingly, the intermediate difficulty can be                   tance from the start state to the goal state as the edge weights.
+used as a critic principle for choosing sub-goals. For instance,                  In their work, they utilize the intuition that the value of states
+Florensa et al. [2018] scored the difficulty with the received                    can approximate the distance to goals under the binary reward
+reward, which is used to label the goals as positive/negative                     function (Eq. (5)); then, the proposed algorithm runs a graph
+samples; then, they trained a GAN model to generate goals                         search to find the sequence of way-points to achieve the tar-
+with appropriate difficulty scores. Campero et al. [2021] pro-                    get and takes actions by a learned policy conditioned on the
+posed a teacher-student framework, where the teacher serves                       way-points one after another.
+as a goal producer that tries to propose increasingly challeng-
+ing goals. The teacher learns from the student’s performance                      Model-based planning. Human has the ability to plan a
+on the produced goal, while the student learns from both ex-                      long-term goal by decomposing it into several short-term seg-
+trinsic rewards from the environment and intrinsic rewards                        ments. To this end, Nair and Finn [2020] trained a dynamics
+from the teacher. Moreover, Zhang et al. [2020] treated the                       model for planning a sequence of sub-goals from the initial
+epistemic uncertainty of the Q-function as a measurement of                       state to the final target in image-based tasks. Particularly, they
+the difficulty for reached goals, which is further used for con-                  performed visual model-predictive control (MPC) to measure
+structing a distribution to sample goals. When the uncertainty                    the predicted cost of the sub-goal segments and sought for the
+is high, the goal should be lied at the knowledge frontier of                     minimal-cost one as the current goal to reach. When the sub-
+the policy, and is thus at an appropriate difficulty to learn.                    goals were planned, they simply used visual MPC to plan to
+Exploration awareness. Notice that in GCRL, the essen-                            reach sub-goals one by one.
+tial challenge making desired goals hard to reach is the sparse
+reward function which limits the learning efficiency of the                       Learn from experts. The expert demonstration can provide
+agent. Therefore, we should boost its exploration ability to                      useful guidance for reaching a hard goal, since it directly
+cover unseen goals and states as many as possible, so that                        contains the way-points for decomposing such a target into
+the agent can learn far more from experience replay. To this                      smaller sub-goals. Such an intuition motivates the work of
+end, in GCRL, many researchers propose to sample with the                         Paul et al. [2019], which made use of the order of sub-goal in-
+sub-goals that lead to a better exploring ability. Pitis et al.                   dices along the expert trajectory as the evidence of difficulty,
+[2020] proposed to sample the goals which could maximize                          and learned to predict the sub-goals in the equipartitions from
+the entropy of the historically achieved goals, and in result,                    the expert trajectory conditioned on the given state.
+
+
+
+                                                                           5507
+                               Proceedings of the Thirty-First International Joint Conference on Artificial Intelligence (IJCAI-22)
+                                                                          Survey Track
+
+
+
+      Approach                                                              Resolved Goal Type              Sub-Goal         Relabel   Optimization
+      UVFA [Schaul et al., 2015]                                                 Vector/Image                                               X
+      HER [Andrychowicz et al., 2017]                                            Vector/Image                                   X
+      Laplacian Representation Learning [Wu et al., 2018]                        Vector/Image                                               X
+      SR [Trott et al., 2019]                                                    Vector/Image                                               X
+      DDL [Hartikainen et al., 2019]                                             Vector/Image                    X                          X
+      SoRB [Eysenbach et al., 2019b]                                             Vector/Image                    X
+      Skew-Fit [Pong et al., 2020]                                               Vector/Image                    X
+      HER with Demonstrations [Nair et al., 2018a]                                    Vector                                                X
+      GoalGAN [Florensa et al., 2018]                                                 Vector                     X
+      Sub-goal Discovery [Paul et al., 2019]                                          Vector                     X
+      HGG [Ren et al., 2019]                                                          Vector                     X
+      CHER [Fang et al., 2019]                                                        Vector                                    X
+      G-HER [Bai et al., 2019]                                                        Vector                                    X
+      Hindsight Planner [Lai et al., 2020]                                            Vector                     X
+      GDP [Kuang et al., 2020]                                                        Vector                                    X
+      VDS [Zhang et al., 2020]                                                        Vector                     X
+      MEGA [Pitis et al., 2020]                                                       Vector                     X              X
+      PlanGAN [Charlesworth and Montana, 2020]                                        Vector                                                X
+      AIM [Durugkar et al., 2021]                                                     Vector                                                X
+      I-HER [McCarthy and Redmond, 2021]                                              Vector                                                X
+      GCSL [Ghosh et al., 2021]                                                       Vector                                                X
+      MapGo [Zhu et al., 2021]                                                        Vector                                    X           X
+      L3P [Zhang et al., 2021]                                                        Vector                                                X
+      RIG [Nair et al., 2018b]                                                        Image                      X
+      DISCERN [Warde-Farley et al., 2019]                                             Image                      X
+      HVF [Nair and Finn, 2020]                                                       Image                      X
+      AMIGo [Campero et al., 2021]                                                    Image                      X
+      GAP [Nair et al., 2020b]                                                        Image                                                 X
+      LEXA [Mendonca et al., 2021]                                                    Image                                                 X
+
+                                             Table 2: Summary of the algorithms mentioned in Section 4.
+
+
+4.3    Relabeling                                                                   extending the idea of HER on designing advanced relabeling
+Similar to sub-goal selection, the relabeling step also replaces                    strategies. As an improvement, Fang et al. [2019] proposed
+the initial desired goal provided by the task to enhance the                        CHER, a curriculum relabeling method which adaptively se-
+learning efficiency. However, relabeling focuses on replacing                       lects the relabeled goals from failed experiences. The cur-
+the history data in the experience buffer before training the                       riculum is evaluated according to the likeness to desired goals
+agent, instead of changing the distribution for sampling ex-                        and the diversity of goals. To increase the variety of relabeled
+perience. Formally, it requires a relabel function h to replace                     goals and not restricted in the same trajectory, Pitis et al.
+the goal of the samples tuple (st , at , gt , rt ) from the replay                  [2020] generalized HER by additionally relabeling goals that
+buffer B and re-compute the reward:                                                 are randomly sampled from buffers of desired goals, achieved
+                                                                                    goals and behavioral goals, which allows the agent to learn
+      (st , at , gt , rt ) ← (st , at , h(·), r(st , at , h(·))) ,      (12)        different skills at a time. To improve the sample efficiency
+where h can be designed as taking any particular features into                      by exploring on rare visited experiences, Kuang et al. [2020]
+getting new goals.                                                                  learned a density model for achieved goals and relabeled them
+Hindsight relabeling. The relabeling strategy can be                                by prioritizing the rarely seen ones using the density model.
+traced back to the famous Hindsight Experience Replay                                  Recently, Eysenbach et al. [2020] revealed the relation-
+(HER) [Andrychowicz et al., 2017], which is motivated by                            ship between HER and inverse RL which studies how to re-
+the fact that human learns from failure experience. HER re-                         cover the reward function on a set of offline expert trajecto-
+labels the desired goals in the buffer with achieved goals in                       ries. Specifically, hindsight relabeling can be seen as a spe-
+the same trajectories and alleviates the sparse reward sig-                         cial case of maximum-entropy inverse RL with a pre-defined
+nal problem. It shows that off-policy algorithms can reuse                          reward function, and thus inverse RL method is used for rela-
+the data in the replay buffer by relabeling goals in the pre-                       beling goals in their work.
+vious trajectory. HER is widely used as the backbone in                             Relabeling by learning. Selecting the relabeling goals
+many related works [Ren et al., 2019; Pitis et al., 2020;                           from past experiences limit the diversity of relabeled goals.
+Durugkar et al., 2021], and researchers also take efforts on                        To alleviate such a problem and allows relabeling unseen
+
+
+
+                                                                             5508
+                          Proceedings of the Thirty-First International Joint Conference on Artificial Intelligence (IJCAI-22)
+                                                                     Survey Track
+
+
+goals, Bai et al. [2019] trained a conditional generative RNN                  goal elements, such as a sentence of text description [Ahn
+by explicitly modeling the relationship between the policy                     et al., 2022], a goal image of the order of object place-
+performance and the achieved goals, which is further used                      ment [Chebotar et al., 2021], a goal image of the targeted
+for generating relabeled goals according to the averaged re-                   area in the open world [Shah et al., 2021], etc.
+turn obtained by the current policy.                                           Other prospects. Apart from directions mentioned above,
+Foresight. Motivated by the fact that humans can learn                         we note that there are more intriguing future directions worth
+from failure but are also capable of planning for the future                   explored in the formulation of GCRL, such as time-extended
+based on the current situations, Zhu et al. [2021] proposed to                 goals [Forestier and Oudeyer, 2016; Brafman et al., 2018],
+learn and utilize a dynamics model to generate virtual trajec-                 constraint-based goals [Colas et al., 2021], composition of
+tories for relabeling. Foresight goal relabeling can also pre-                 goals [Chitnis et al., 2021] etc.
+vent labeling homogeneous goals limited in historical data,
+which plans new goals that the current policy can achieve.                     Acknowledgements
+                                                                               The authors are supported by “New Generation of AI 2030”
+5   Summary and Future Prospects                                               Major Project (2018AAA0100900), Shanghai Municipal Sci-
+This paper provides a brief review of the development of                       ence and Technology Major Project (2021SHZDZX0102),
+goal-conditioned reinforcement learning (GCRL). We show                        NSFC (62076161). Minghuan Liu is also supported by Wu
+the formulation in the beginning, explain the problem and                      Wen Jun Honorary Doctoral Scholarship, AI Institute, SJTU.
+summarize the basic challenges of in GCRL literature. Fur-                     We thank Mingcheng Chen, Xihuai Wang and Zhengyu Yang
+ther, we investigate the critical element – goal in previous                   for helpful discussions.
+works and present its main types. In the later part, we discuss
+key ways for solving GCRL from the perspective of optimiza-                    References
+tion, sub-goal generation and relabeling, respectively.                        [Ahn et al., 2022] Michael Ahn, Anthony Brohan, Noah
+   Although we try to cover most of the topic, GCRL formu-                       Brown, Yevgen Chebotar, Omar Cortes, Byron David,
+lation and its variant are not limited in the discussed material.                Chelsea Finn, Keerthana Gopalakrishnan, Karol Haus-
+Interested readers can also refer to another survey paper [Co-                   man, Alex Herzog, et al. Do as i can, not as i say:
+las et al., 2020b] that concluded GCRL from a different point                    Grounding language in robotic affordances. arXiv preprint
+of view. As is known to all, RL is hard for large-scale applica-                 arXiv:2204.01691, 2022.
+tions, due to its thorniest limitation of learning from a single
+reward function and the bottleneck of the online interaction                   [Akakzia et al., 2021] Ahmed Akakzia, Cédric Colas,
+cost. Therefore, we note four potential prospects for GCRL,                      Pierre-Yves Oudeyer, Mohamed Chetouani, and Olivier
+namely learning totally intrinsic skills, learning from offline                  Sigaud. Grounding language to autonomously-acquired
+datasets, and large decision models.                                             skills via goal generation. ICLR, 2021.
+Learning totally intrinsic skills. The formulation of                          [Andrychowicz et al., 2017] Marcin Andrychowicz, Filip
+GCRL provides the considerable potential to incorporate self-                    Wolski, Alex Ray, Jonas Schneider, Rachel Fong, Peter
+supervised training to improve the model ability instead of                      Welinder, Bob McGrew, Josh Tobin, Pieter Abbeel, and
+learning from a simple reward signal. Recently, there are                        Wojciech Zaremba. Hindsight experience replay. NeurIPS,
+more research works that break the circle of reaching a mean-                    2017.
+ingful goal state (we have discussed some examples like re-                    [Bai et al., 2019] Chenjia Bai, Peng Liu, Wei Zhao, and Xi-
+ward and commands in Section 3.4) and ask the agents to                          anglong Tang. Guided goal generation for hindsight multi-
+explore all possible goals through itself, as a trend of devel-                  goal reinforcement learning. Neurocomputing, 2019.
+oping totally intrinsic skill learning [Eysenbach et al., 2019a;               [Beattie et al., 2016] Charles Beattie, Joel Z Leibo, et al.
+Sharma et al., 2020]. Specifically, a goal-conditioned policy                    Deepmind lab. CoRR abs/1612.03801, 2016.
+can be only with intrinsic rewards targeted to maximizing the
+mutual information between the skill and the behaviors.                        [Brafman et al., 2018] Ronen Brafman, Giuseppe De Gia-
+                                                                                 como, and Fabio Patrizi. Ltlf/ldlf non-markovian rewards.
+Learning from offline datasets. Since the online data col-                       In Proceedings of the AAAI Conference on Artificial Intel-
+lection in many realistic applications is always infeasible,                     ligence, volume 32, 2018.
+many researches pay attention to offline RL methods, which
+shows potential to learning sequential decision policies solely                [Brockman et al., 2016] Greg Brockman, Vicki Cheung,
+from static datasets without interacting with the environment.                   et al. Openai gym. CoRR abs/1606.01540, 2016.
+This inspires taking advantage of GCRL for learning gen-                       [Campero et al., 2021] Andres Campero, Roberta Raileanu,
+eralized goal-conditioned decision models from the offline                       Heinrich Küttler, Joshua B Tenenbaum, Tim Rocktäschel,
+dataset, like in Tian et al. [2021] and Chebotar et al. [2021].                  and Edward Grefenstette. Learning with amigo: Adversar-
+Potential in large decision models. An appealing direc-                          ially motivated intrinsic goals. ICLR, 2021.
+tion for utilizing GCRL is to develop general pre-trained                      [Chan et al., 2019] Harris Chan, Yuhuai Wu, Jamie Kiros,
+goal-conditioned control policies. Combined with other pre-                      Sanja Fidler, and Jimmy Ba. Actrce: Augmenting expe-
+trained models, such a large decision model can be used to                       rience via teacher’s advice for multi-goal reinforcement
+command the robots to handle a variety of tasks with kinds of                    learning. CoRR abs/1902.04546, 2019.
+
+
+
+                                                                        5509
+                         Proceedings of the Thirty-First International Joint Conference on Artificial Intelligence (IJCAI-22)
+                                                                    Survey Track
+
+
+[Chane-Sane et al., 2021] Elliot Chane-Sane,          Cordelia                [Forestier and Oudeyer, 2016] Sébastien      Forestier   and
+   Schmid, and Ivan Laptev. Goal-conditioned reinforce-                          Pierre-Yves Oudeyer. Modular active curiosity-driven
+   ment learning with imagined subgoals. In ICML, 2021.                          discovery of tool use. IROS, 2016.
+[Charlesworth and Montana, 2020] Henry Charlesworth and                       [Ghosh et al., 2021] Dibya Ghosh, Abhishek Gupta, Ashwin
+   Giovanni Montana. Plangan: Model-based planning with                          Reddy, Justin Fu, Coline Devin, Benjamin Eysenbach, and
+   sparse rewards and multiple goals. NeurIPS, 2020.                             Sergey Levine. Learning to reach goals via iterated super-
+[Chebotar et al., 2021] Yevgen Chebotar, Karol Hausman,                          vised learning. ICLR, 2021.
+   et al. Actionable models: Unsupervised offline reinforce-                  [Hartikainen et al., 2019] Kristian Hartikainen, Xinyang
+   ment learning of robotic skills. ICML, 2021.                                  Geng, Tuomas Haarnoja, and Sergey Levine. Dynamical
+[Chen et al., 2021] Lili Chen, Kevin Lu, Aravind Ra-                             distance learning for semi-supervised and unsupervised
+                                                                                 skill discovery. ICLR, 2019.
+   jeswaran, Kimin Lee, Aditya Grover, Michael Laskin,
+   Pieter Abbeel, Aravind Srinivas, and Igor Mordatch. De-                    [Jiang et al., 2019] Yiding Jiang, Shixiang Gu, Kevin Mur-
+   cision transformer: Reinforcement learning via sequence                       phy, and Chelsea Finn. Language as an abstraction for
+   modeling. CoRR abs/2106.01345, 2021.                                          hierarchical deep reinforcement learning. NeurIPS, 2019.
+[Chitnis et al., 2021] Rohan Chitnis, Tom Silver, Joshua                      [Johnson et al., 2016] Matthew Johnson, Katja Hofmann,
+   Tenenbaum, Leslie Pack Kaelbling, and Tomas Lozano-                           Tim Hutton, and David Bignell. The malmo platform for
+   Perez. Glib: Efficient exploration for relational model-                      artificial intelligence experimentation. 2016.
+   based reinforcement learning via goal-literal babbling.                    [Khazatsky et al., 2021] Alexander Khazatsky, Ashvin Nair,
+   AAAI, 2021.                                                                   Daniel Jing, and Sergey Levine. What can i do here? learn-
+[Colas et al., 2020a] Cédric Colas, Tristan Karch, Nicolas                      ing new skills by imagining visual affordances. ICRA,
+   Lair, Jean-Michel Dussoux, Clément Moulin-Frier, Pe-                         2021.
+   ter Ford Dominey, and Pierre-Yves Oudeyer. Language                        [Kuang et al., 2020] Yingyi Kuang, Abraham Itzhak Wein-
+   as a cognitive tool to imagine goals in curiosity-driven ex-                  berg, George Vogiatzis, and Diego R Faria. Goal density-
+   ploration. NeurIPS, 2020.                                                     based hindsight experience prioritization for multi-goal
+[Colas et al., 2020b] Cédric Colas, Tristan Karch, Olivier                      robot manipulation reinforcement learning. RO-MAN,
+   Sigaud, and Pierre-Yves Oudeyer. Intrinsically motivated                      2020.
+   goal-conditioned reinforcement learning: a short survey.                   [Kumar et al., 2019] Aviral Kumar, Xue Bin Peng, and
+   arXiv preprint arXiv:2012.09830, 2020.                                        Sergey Levine. Reward-conditioned policies. CoRR
+[Colas et al., 2021] Cédric Colas, Boris Hejblum, Sébastien                    abs/1912.13465, 2019.
+   Rouillon, et al. Epidemioptim: A toolbox for the optimiza-                 [Lai et al., 2020] Yaqing Lai, Wufan Wang, Yunjie Yang, Ji-
+   tion of control policies in epidemiological models. JAIR,                     hong Zhu, and Minchi Kuang. Hindsight planner. AAMAS,
+   2021.                                                                         2020.
+[Durugkar et al., 2021] Ishan Durugkar, Mauricio Tec, Scott                   [Lee et al., 2020] Lisa Lee, Benjamin Eysenbach, Ruslan
+   Niekum, and Peter Stone. Adversarial intrinsic motivation                     Salakhutdinov, Shixiang Shane Gu, and Chelsea Finn.
+   for reinforcement learning. CoRR abs/2105.13345, 2021.                        Weakly-supervised reinforcement learning for control-
+[Eysenbach et al., 2019a] Benjamin Eysenbach, Abhishek                           lable behavior. NeurIPS, 2020.
+   Gupta, Julian Ibarz, and Sergey Levine. Diversity is all you               [Luketina et al., 2019] Jelena Luketina, Nantas Nardelli,
+   need: Learning skills without a reward function. ICLR,                        et al. A survey of reinforcement learning informed by nat-
+   2019.                                                                         ural language. IJCAI, 2019.
+[Eysenbach et al., 2019b] Benjamin Eysenbach, Ruslan                          [McCarthy and Redmond, 2021] Robert McCarthy and
+   Salakhutdinov, and Sergey Levine. Search on the replay                        Stephen J Redmond. Imaginary hindsight experience
+   buffer: Bridging planning and reinforcement learning.                         replay: Curious model-based learning for sparse reward
+   NeurIPS, 2019.                                                                tasks. CoRR abs/2110.02414, 2021.
+[Eysenbach et al., 2020] Benjamin Eysenbach, Xinyang                          [Mendonca et al., 2021] Russell Mendonca, Oleh Rybkin,
+   Geng, Sergey Levine, and Ruslan Salakhutdinov. Rewrit-                        Kostas Daniilidis, Danijar Hafner, and Deepak Pathak.
+   ing history with inverse rl: Hindsight inference for policy                   Discovering and achieving goals via world models. CoRR
+   improvement. NeurIPS, 2020.                                                   abs/2110.09514, 2021.
+[Fang et al., 2019] Meng Fang, Tianyi Zhou, Yali Du, Lei                      [Nair and Finn, 2020] Suraj Nair and Chelsea Finn. Hierar-
+   Han, and Zhengyou Zhang. Curriculum-guided hindsight                          chical foresight: Self-supervised learning of long-horizon
+   experience replay. NeurIPS, 2019.                                             tasks via visual subgoal generation. ICLR, 2020.
+[Florensa et al., 2018] Carlos Florensa,        David Held,                   [Nair et al., 2018a] Ashvin Nair, Bob McGrew, Marcin
+   Xinyang Geng, and Pieter Abbeel. Automatic goal                               Andrychowicz, Wojciech Zaremba, and Pieter Abbeel.
+   generation for reinforcement learning agents. ICML,                           Overcoming exploration in reinforcement learning with
+   2018.                                                                         demonstrations. ICRA, 2018.
+
+
+
+                                                                       5510
+                         Proceedings of the Thirty-First International Joint Conference on Artificial Intelligence (IJCAI-22)
+                                                                    Survey Track
+
+
+[Nair et al., 2018b] Ashvin V Nair, Vitchyr Pong, Mur-                        [Shah et al., 2021] Dhruv Shah, Benjamin Eysenbach,
+  taza Dalal, Shikhar Bahl, Steven Lin, and Sergey                               Nicholas Rhinehart, and Sergey Levine. Rapid explo-
+  Levine. Visual reinforcement learning with imagined                            ration for open-world navigation with latent goal models.
+  goals. NeurIPS, 2018.                                                          arXiv preprint arXiv:2104.05859, 2021.
+[Nair et al., 2020a] Ashvin Nair, Shikhar Bahl, Alexander                     [Sharma et al., 2020] Archit Sharma, Shixiang Gu, Sergey
+  Khazatsky, Vitchyr Pong, Glen Berseth, and Sergey                              Levine, Vikash Kumar, and Karol Hausman. Dynamics-
+  Levine. Contextual imagined goals for self-supervised                          aware unsupervised discovery of skills. ICLR, 2020.
+  robotic learning. CoRL, 2020.                                               [Srinivas et al., 2018] Aravind Srinivas, Allan Jabri, Pieter
+[Nair et al., 2020b] Suraj Nair, Silvio Savarese, and Chelsea                    Abbeel, Sergey Levine, and Chelsea Finn. Universal plan-
+  Finn. Goal-aware prediction: Learning to model what mat-                       ning networks: Learning generalizable representations for
+  ters. ICML, 2020.                                                              visuomotor control. ICML, 2018.
+                                                                              [Srivastava et al., 2019] Rupesh Kumar Srivastava, Pranav
+[Niemueller et al., 2019] Tim Niemueller, Till Hofmann,
+                                                                                 Shyam, Filipe Mutz, Wojciech Jaśkowski, and Jürgen
+  and Gerhard Lakemeyer. Goal reasoning in the clips ex-                         Schmidhuber. Training agents using upside-down rein-
+  ecutive for integrated planning and execution. In Proceed-                     forcement learning. CoRR abs/1912.02877, 2019.
+  ings of the International Conference on Automated Plan-
+  ning and Scheduling, volume 29, pages 754–763, 2019.                        [Sutton and Barto, 2018] Richard S Sutton and Andrew G
+                                                                                 Barto. Reinforcement learning: An introduction. MIT
+[Paul et al., 2019] Sujoy Paul, Jeroen Vanbaar, and Amit                         press, 2018.
+   Roy-Chowdhury. Learning from trajectories via subgoal
+                                                                              [Tang and Kucukelbir, 2021] Yunhao Tang and Alp Ku-
+   discovery. NeurIPS, 2019.
+                                                                                 cukelbir. Hindsight expectation maximization for goal-
+[Pitis et al., 2020] Silviu Pitis, Harris Chan, Stephen Zhao,                    conditioned reinforcement learning. In AISTATS, pages
+   Bradly Stadie, and Jimmy Ba. Maximum entropy gain ex-                         2863–2871, 2021.
+   ploration for long horizon multi-goal reinforcement learn-                 [Tassa et al., 2020] Yuval Tassa, Saran Tunyasuvunakool,
+   ing. ICML, 2020.                                                              Alistair Muldal, Yotam Doron, Siqi Liu, Steven Bohez,
+[Plappert et al., 2018] Matthias    Plappert,     Marcin                         Josh Merel, Tom Erez, Timothy Lillicrap, and Nicolas
+   Andrychowicz, et al. Multi-goal reinforcement learn-                          Heess. dm control: Software and tasks for continuous con-
+   ing: Challenging robotics environments and request for                        trol, 2020.
+   research. CoRR abs/1802.09464, 2018.                                       [Tian et al., 2021] Stephen Tian, Suraj Nair, Frederik Ebert,
+[Pong et al., 2020] Vitchyr H Pong, Murtaza Dalal, Steven                        Sudeep Dasari, Benjamin Eysenbach, Chelsea Finn, and
+   Lin, Ashvin Nair, Shikhar Bahl, and Sergey Levine. Skew-                      Sergey Levine. Model-based visual planning with self-
+   fit: State-covering self-supervised reinforcement learning.                   supervised functional distances. ICLR, 2021.
+   ICML, 2020.                                                                [Trott et al., 2019] Alexander Trott, Stephan Zheng, Caim-
+[Ren et al., 2019] Zhizhou Ren, Kefan Dong, Yuan Zhou,                           ing Xiong, and Richard Socher. Keeping your distance:
+                                                                                 Solving sparse reward tasks using self-balancing shaped
+  Qiang Liu, and Jian Peng. Exploration via hindsight goal
+                                                                                 rewards. NeurIPS, 2019.
+  generation. NeurIPS, 2019.
+                                                                              [Warde-Farley et al., 2019] David Warde-Farley,            Tom
+[Roberts et al., 2018] Mark Roberts, Daniel Borrajo,                             Van de Wiele, Tejas Kulkarni, Catalin Ionescu, Steven
+  Michael Cox, and Neil Yorke-Smith. Special issue on goal                       Hansen, and Volodymyr Mnih. Unsupervised control
+  reasoning. AI Communications, 31(2):115–116, 2018.                             through non-parametric discriminative rewards. ICLR,
+[Rolf and Steil, 2013] Matthias Rolf and Jochen J Steil. Ef-                     2019.
+  ficient exploratory learning of inverse kinematics on a                     [Wu et al., 2018] Yifan Wu, George Tucker, and Ofir
+  bionic elephant trunk. IEEE transactions on neural net-                        Nachum. The laplacian in rl: Learning representations
+  works and learning systems, 25(6):1147–1160, 2013.                             with efficient approximations. ICLR, 2018.
+[Santucci et al., 2016] Vieri Giuliano Santucci, Gianluca                     [Zhang et al., 2020] Yunzhi Zhang, Pieter Abbeel, and Ler-
+   Baldassarre, and Marco Mirolli. Grail: a goal-discovering                     rel Pinto. Automatic curriculum learning through value
+   robotic architecture for intrinsically-motivated learning.                    disagreement. NeurIPS, 2020.
+   IEEE Transactions on Cognitive and Developmental Sys-                      [Zhang et al., 2021] Lunjun Zhang, Ge Yang, and Bradly C
+   tems, 8(3):214–231, 2016.                                                     Stadie. World model as a graph: Learning latent landmarks
+[Schaul et al., 2015] Tom Schaul, Daniel Horgan, Karol                           for planning. ICML, 2021.
+   Gregor, and David Silver. Universal value function ap-                     [Zhu et al., 2021] Menghui Zhu, Minghuan Liu, Jian Shen,
+   proximators. ICML, 2015.                                                      Zhicheng Zhang, Sheng Chen, Weinan Zhang, Deheng
+[Schmidhuber, 2019] Juergen Schmidhuber. Reinforcement                           Ye, Yong Yu, Qiang Fu, and Wei Yang. Mapgo: Model-
+                                                                                 assisted policy optimization for goal-oriented tasks. IJCAI,
+   learning upside down: Don’t predict rewards–just map
+                                                                                 2021.
+   them to actions. CoRR abs/1912.02875, 2019.
+
+
+
+                                                                       5511
+
