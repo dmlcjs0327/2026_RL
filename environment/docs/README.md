@@ -17,6 +17,7 @@
 | **[setup/](setup/)** | 실행 환경·터미널 명령어 |
 | **[analysis/](analysis/)** | 코드 분석·테스트 결과·공식 문서 요약 |
 | **[reference/](reference/)** | Aerial Gym 원본 문서 (Getting Started, RL Training 등) |
+| **[upstream_diff.md](upstream_diff.md)** | Upstream (`ntnu-arl/aerial_gym_simulator` v2.0.0) 대비 추가·수정 사항 + 재검증 명령 |
 
 ---
 
@@ -25,4 +26,5 @@
 - **환경 스펙·터미널 명령**: [setup/environment_spec.md](setup/environment_spec.md), [setup/terminal_commands.md](setup/terminal_commands.md)
 - **코드 분석 요약**: [analysis/aerial_gym_code_analysis.md](analysis/aerial_gym_code_analysis.md)
 - **테스트 결과 목차**: [analysis/test_results_index.md](analysis/test_results_index.md)
-- **논문/실험 설계 문서**: [`../../paper/docs/experiments/`](../../paper/docs/experiments/)
+- **Upstream fork 차이**: [upstream_diff.md](upstream_diff.md)
+- **연구 계획서 (top-level)**: [`../../UAV_RL_PretrainAdapt_Proposal.md`](../../UAV_RL_PretrainAdapt_Proposal.md)
