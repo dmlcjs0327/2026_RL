@@ -1,0 +1,74 @@
+name: Week14 same-runner wall-clock comparison
+
+on:
+  push:
+    branches:
+      - chatgpt/week14-ppo-20260830
+    paths:
+      - .github/workflows/week14_same_runner.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    name: Same runner, 10 minutes per algorithm
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y swig ffmpeg
+      - name: Install Python packages
+        run: |
+          python -m pip install --upgrade pip wheel setuptools
+          python -m pip install 'gymnasium[box2d]' stable-baselines3 sb3-contrib 'imageio[ffmpeg]' pandas matplotlib
+      - name: Restore and correct benchmark script
+        run: |
+          python - <<'PY'
+          import base64, gzip, pathlib, re
+          workflow = pathlib.Path('.github/workflows/week14_ppo.yml').read_text(encoding='utf-8')
+          match = re.search(r'payload = "([A-Za-z0-9+/=]+)"', workflow)
+          if not match:
+              raise RuntimeError('Embedded benchmark payload was not found')
+          source = gzip.decompress(base64.b64decode(match.group(1))).decode('utf-8')
+          source = source.replace('raw = dist.rsample()', 'raw = dist.sample()')
+          pathlib.Path('/tmp/train_week14_final.py').write_text(source, encoding='utf-8')
+          PY
+          python -m py_compile /tmp/train_week14_final.py
+      - name: Record runner information
+        run: |
+          mkdir -p week14_same_runner
+          python -VV > week14_same_runner/python.txt
+          lscpu > week14_same_runner/lscpu.txt
+          free -h > week14_same_runner/memory.txt
+      - name: PPO — 10 minutes
+        env: {SDL_VIDEODRIVER: dummy}
+        run: python /tmp/train_week14_final.py --algorithm ppo --seed 42 --output week14_same_runner --total-timesteps 1000000 --max-wall-seconds 600 --eval-every-steps 50000 --eval-episodes 10 --final-eval-episodes 20 --n-envs 8
+      - name: A2C — 10 minutes
+        env: {SDL_VIDEODRIVER: dummy}
+        run: python /tmp/train_week14_final.py --algorithm a2c --seed 42 --output week14_same_runner --total-timesteps 1000000 --max-wall-seconds 600 --eval-every-steps 50000 --eval-episodes 10 --final-eval-episodes 20 --n-envs 8
+      - name: TRPO — 10 minutes
+        env: {SDL_VIDEODRIVER: dummy}
+        run: python /tmp/train_week14_final.py --algorithm trpo --seed 42 --output week14_same_runner --total-timesteps 1000000 --max-wall-seconds 600 --eval-every-steps 50000 --eval-episodes 10 --final-eval-episodes 20 --n-envs 8
+      - name: DQN — 10 minutes
+        env: {SDL_VIDEODRIVER: dummy}
+        run: python /tmp/train_week14_final.py --algorithm dqn --seed 42 --output week14_same_runner --total-timesteps 1000000 --max-wall-seconds 600 --eval-every-steps 50000 --eval-episodes 10 --final-eval-episodes 20 --n-envs 1
+      - name: REINFORCE — 10 minutes
+        env: {SDL_VIDEODRIVER: dummy}
+        run: python /tmp/train_week14_final.py --algorithm reinforce --seed 42 --output week14_same_runner --total-timesteps 1000000 --max-wall-seconds 600 --eval-every-steps 50000 --eval-episodes 10 --final-eval-episodes 20 --n-envs 1
+      - name: Upload result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: week14-same-runner-wallclock
+          path: week14_same_runner
+          if-no-files-found: warn
+          retention-days: 7
