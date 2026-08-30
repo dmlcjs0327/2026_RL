@@ -34,21 +34,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip wheel setuptools
           python -m pip install 'gymnasium[box2d]' stable-baselines3 sb3-contrib 'imageio[ffmpeg]' pandas matplotlib
-      - name: Restore and patch benchmark to 2x128
+      - name: Restore 2x128 benchmark
         run: |
-          base64 -d experiments/week14_ppo/train_week14_fix.py.gz.b64 | gzip -d > /tmp/train_week14_128.py
-          python - <<'PY'
-          from pathlib import Path
-          p = Path('/tmp/train_week14_128.py')
-          s = p.read_text()
-          s = s.replace('net_arch=dict(pi=[64, 64], vf=[64, 64])', 'net_arch=dict(pi=[128, 128], vf=[128, 128])')
-          s = s.replace('dqn_kwargs = dict(net_arch=[256, 256], activation_fn=torch.nn.ReLU)', 'dqn_kwargs = dict(net_arch=[128, 128], activation_fn=torch.nn.ReLU)')
-          s = s.replace('VecNormalize(env, norm_obs=True, norm_reward=True, clip_obs=10.0, gamma=0.999)', 'VecNormalize(env, norm_obs=True, norm_reward=False, clip_obs=10.0, gamma=0.999)')
-          p.write_text(s)
-          assert 'net_arch=dict(pi=[128, 128], vf=[128, 128])' in s
-          assert 'dqn_kwargs = dict(net_arch=[128, 128]' in s
-          assert 'norm_reward=False' in s
-          PY
+          base64 -d experiments/week14_ppo/train_week14_128.py.gz.b64 | gzip -d > /tmp/train_week14_128.py
           python -m py_compile /tmp/train_week14_128.py
           grep -n "net_arch\|norm_reward" /tmp/train_week14_128.py | head -20
       - name: Train, evaluate, and record video
