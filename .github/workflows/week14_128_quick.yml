@@ -1,0 +1,75 @@
+name: Week14 2x128 quick comparison
+
+on:
+  push:
+    branches:
+      - chatgpt/week14-ppo-20260830
+    paths:
+      - .github/workflows/week14_128_quick.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  train:
+    name: 2x128 ${{ matrix.algorithm }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        algorithm: [ppo, a2c, trpo, dqn, reinforce]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y swig ffmpeg
+      - name: Install Python packages
+        run: |
+          python -m pip install --upgrade pip wheel setuptools
+          python -m pip install 'gymnasium[box2d]' stable-baselines3 sb3-contrib 'imageio[ffmpeg]' pandas matplotlib
+      - name: Restore and patch benchmark to 2x128
+        run: |
+          base64 -d experiments/week14_ppo/train_week14_fix.py.gz.b64 | gzip -d > /tmp/train_week14_128.py
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('/tmp/train_week14_128.py')
+          s = p.read_text()
+          s = s.replace('net_arch=dict(pi=[64, 64], vf=[64, 64])', 'net_arch=dict(pi=[128, 128], vf=[128, 128])')
+          s = s.replace('dqn_kwargs = dict(net_arch=[256, 256], activation_fn=torch.nn.ReLU)', 'dqn_kwargs = dict(net_arch=[128, 128], activation_fn=torch.nn.ReLU)')
+          s = s.replace('VecNormalize(env, norm_obs=True, norm_reward=True, clip_obs=10.0, gamma=0.999)', 'VecNormalize(env, norm_obs=True, norm_reward=False, clip_obs=10.0, gamma=0.999)')
+          p.write_text(s)
+          assert 'net_arch=dict(pi=[128, 128], vf=[128, 128])' in s
+          assert 'dqn_kwargs = dict(net_arch=[128, 128]' in s
+          assert 'norm_reward=False' in s
+          PY
+          python -m py_compile /tmp/train_week14_128.py
+          grep -n "net_arch\|norm_reward" /tmp/train_week14_128.py | head -20
+      - name: Train, evaluate, and record video
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: |
+          python /tmp/train_week14_128.py \
+            --algorithm ${{ matrix.algorithm }} \
+            --seed 42 \
+            --output week14_128_results \
+            --total-timesteps 1000000 \
+            --max-wall-seconds 1800 \
+            --eval-every-steps 100000 \
+            --eval-episodes 10 \
+            --final-eval-episodes 50 \
+            --n-envs 8
+      - name: Upload result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: week14-128-${{ matrix.algorithm }}
+          path: week14_128_results/${{ matrix.algorithm }}_seed42
+          if-no-files-found: warn
+          retention-days: 7
