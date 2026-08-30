@@ -1,0 +1,58 @@
+name: Week14 REINFORCE corrected convergence
+
+on:
+  push:
+    branches:
+      - chatgpt/week14-ppo-20260830
+    paths:
+      - .github/workflows/week14_reinforce_fixed.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  train:
+    name: REINFORCE corrected 1.5M
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y swig ffmpeg
+      - name: Install Python packages
+        run: |
+          python -m pip install --upgrade pip wheel setuptools
+          python -m pip install 'gymnasium[box2d]' stable-baselines3 sb3-contrib 'imageio[ffmpeg]' pandas matplotlib
+      - name: Restore benchmark script
+        run: |
+          base64 -d experiments/week14_ppo/train_week14_fix.py.gz.b64 | gzip -d > /tmp/train_week14_fix.py
+          python -m py_compile /tmp/train_week14_fix.py
+      - name: Train and evaluate REINFORCE
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: |
+          python /tmp/train_week14_fix.py \
+            --algorithm reinforce \
+            --seed 42 \
+            --output week14_reinforce_results \
+            --total-timesteps 1500000 \
+            --max-wall-seconds 3600 \
+            --eval-every-steps 50000 \
+            --eval-episodes 10 \
+            --final-eval-episodes 50 \
+            --n-envs 1
+      - name: Upload result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: week14-reinforce-fixed
+          path: week14_reinforce_results/reinforce_seed42
+          if-no-files-found: warn
+          retention-days: 7
