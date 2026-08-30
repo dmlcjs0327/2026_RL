@@ -1,0 +1,87 @@
+name: Week14 final benchmark suite
+
+on:
+  push:
+    branches:
+      - chatgpt/week14-ppo-20260830
+    paths:
+      - .github/workflows/week14_final_benchmark.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  train:
+    name: ${{ matrix.tag }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    strategy:
+      fail-fast: false
+      max-parallel: 7
+      matrix:
+        include:
+          - {tag: fair-ppo, algorithm: ppo, steps: 1000000, wall: 1800, envs: 8, eval_every: 50000, profile: fair}
+          - {tag: fair-a2c, algorithm: a2c, steps: 1000000, wall: 1800, envs: 8, eval_every: 50000, profile: fair}
+          - {tag: fair-trpo, algorithm: trpo, steps: 1000000, wall: 1800, envs: 8, eval_every: 50000, profile: fair}
+          - {tag: fair-dqn, algorithm: dqn, steps: 1000000, wall: 1800, envs: 1, eval_every: 50000, profile: fair}
+          - {tag: fair-reinforce, algorithm: reinforce, steps: 1000000, wall: 1800, envs: 1, eval_every: 50000, profile: fair}
+          - {tag: extended-ppo, algorithm: ppo, steps: 5000000, wall: 5400, envs: 32, eval_every: 100000, profile: ppo-verified}
+          - {tag: extended-reinforce, algorithm: reinforce, steps: 1500000, wall: 3600, envs: 1, eval_every: 100000, profile: reinforce-fixed}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y swig ffmpeg
+      - name: Install Python packages
+        run: |
+          python -m pip install --upgrade pip wheel setuptools
+          python -m pip install 'gymnasium[box2d]' stable-baselines3 sb3-contrib 'imageio[ffmpeg]' pandas matplotlib
+      - name: Restore and correct benchmark script
+        env:
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          python - <<'PY'
+          import base64, gzip, os, pathlib, re
+          workflow = pathlib.Path('.github/workflows/week14_ppo.yml').read_text(encoding='utf-8')
+          match = re.search(r'payload = "([A-Za-z0-9+/=]+)"', workflow)
+          if not match:
+              raise RuntimeError('Embedded benchmark payload was not found')
+          source = gzip.decompress(base64.b64decode(match.group(1))).decode('utf-8')
+          source = source.replace('raw = dist.rsample()', 'raw = dist.sample()')
+          if os.environ.get('PROFILE') == 'ppo-verified':
+              old = 'learning_rate=3e-4,\n            n_steps=1024,\n            batch_size=64,'
+              new = 'learning_rate=3e-4,\n            n_steps=2048,\n            batch_size=64,'
+              if old not in source:
+                  raise RuntimeError('PPO rollout setting was not found')
+              source = source.replace(old, new, 1)
+          pathlib.Path('/tmp/train_week14_final.py').write_text(source, encoding='utf-8')
+          PY
+          python -m py_compile /tmp/train_week14_final.py
+      - name: Train, evaluate, and record video
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: |
+          python /tmp/train_week14_final.py \
+            --algorithm '${{ matrix.algorithm }}' \
+            --seed 42 \
+            --output week14_results \
+            --total-timesteps '${{ matrix.steps }}' \
+            --max-wall-seconds '${{ matrix.wall }}' \
+            --eval-every-steps '${{ matrix.eval_every }}' \
+            --eval-episodes 10 \
+            --final-eval-episodes 50 \
+            --n-envs '${{ matrix.envs }}'
+      - name: Upload result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: week14-${{ matrix.tag }}
+          path: week14_results/${{ matrix.algorithm }}_seed42
+          if-no-files-found: warn
+          retention-days: 7
